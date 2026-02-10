@@ -112,39 +112,39 @@ Notes:
 ```mermaid
 flowchart LR
   subgraph Sources
-    PT[Portugal Open Data\n(reserves dataset)]
-    ES[Future: Spain Adapter]
-    BR[Future: Brazil Adapter]
+    PT["Portugal Open Data<br/>reserves dataset"]
+    ES["Future: Spain Adapter"]
+    BR["Future: Brazil Adapter"]
   end
 
-  subgraph Worker[BloodWatch.Worker]
-    Sch[Scheduler]\n(weekly+hourly)
-    Ing[Ingestion Engine]
-    Rules[Rule Engine]
-    Disp[Dispatch Engine]
+  subgraph Worker["BloodWatch.Worker"]
+    Sch["Scheduler<br/>weekly + hourly"]
+    Ing["Ingestion Engine"]
+    Rules["Rule Engine"]
+    Disp["Dispatch Engine"]
   end
 
-  subgraph Core[BloodWatch.Core]
-    Adapters[IDataSourceAdapter]
-    Canon[Canonical Models]
-    RulesIf[IRule]
-    Notif[INotifier]
+  subgraph Core["BloodWatch.Core"]
+    Adapters["IDataSourceAdapter"]
+    Canon["Canonical Models"]
+    RulesIf["IRule"]
+    Notif["INotifier"]
   end
 
-  subgraph Infra[BloodWatch.Infrastructure]
+  subgraph Infra["BloodWatch.Infrastructure"]
     Pg[(Postgres)]
-    Repo[Repositories]
+    Repo["Repositories"]
   end
 
-  subgraph API[BloodWatch.Api]
-    Endpoints[OpenAPI REST\n/latest /trend /regions\n/subscriptions]
+  subgraph API["BloodWatch.Api"]
+    Endpoints["OpenAPI REST<br/>/latest /trend /regions<br/>/subscriptions"]
   end
 
   subgraph Notifiers
-    Discord[Discord Webhook]
-    Telegram[Telegram]
-    Email[Email]
-    Webhook[Generic Webhook]
+    Discord["Discord Webhook"]
+    Telegram["Telegram"]
+    Email["Email"]
+    Webhook["Generic Webhook"]
   end
 
   PT --> Ing
