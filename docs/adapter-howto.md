@@ -1,42 +1,49 @@
 # Adapter How-To
 
-This guide explains how to add a new data source adapter (country/region) to BloodWatch.
+This guide explains how to add a new country adapter using the M0 contracts.
 
-## 1) Create a new adapter project
-Create a project like:
+> Disclaimer: No medical advice. Adapters should only ingest public, non-clinical data.
+
+## 1. Create a project
+
+Create a new project in `src/`, for example:
 - `BloodWatch.Adapters.Spain`
-- `BloodWatch.Adapters.Brazil`
 
-Reference `BloodWatch.Core` and `BloodWatch.Infrastructure`.
+Reference `BloodWatch.Core`.
 
-## 2) Implement `IDataSourceAdapter`
-Your adapter should:
-- expose a stable `AdapterKey` (e.g., `pt-transparencia-sns`)
-- fetch data from the public source
-- map it into canonical `Snapshot` + `SnapshotItem` models
-- normalize region keys and metric keys
+## 2. Implement `IDataSourceAdapter`
 
-## 3) Add configuration
-Adapters should read:
-- base URLs
-- API keys (if any)
-- schedule hints (optional)
+Each adapter must provide:
+- `AdapterKey`
+- `GetAvailableRegionsAsync()`
+- `FetchLatestAsync()` returning canonical `Snapshot`
 
-from configuration / environment variables.
+Map source-specific fields into canonical models:
+- `SourceRef`
+- `RegionRef`
+- `Metric`
+- `SnapshotItem`
 
-## 4) Register the adapter
-In the Worker, register adapters using DI (Dependency Injection).
-The ingestion job should run adapters by adapter key.
+## 3. Register adapter in DI
 
-## 5) Add tests
-Add unit tests with stored JSON samples:
-- mapping correctness
-- null/format tolerance
-- dedupe stability (if adapter creates snapshot hash inputs)
+Register in API/Worker startup:
 
-## 6) Document your source
-Add a short section in `docs/data-sources.md` describing:
-- source link
-- refresh cadence
-- key fields used
-- any limitations
+```csharp
+builder.Services.AddSingleton<IDataSourceAdapter, YourAdapter>();
+```
+
+## 4. Add source seed (optional but recommended)
+
+Add a source row in `BloodWatchDbContext` seed data for discoverability and stable IDs.
+
+## 5. Add tests
+
+Create tests for:
+- Payload parsing/mapping
+- Region normalization
+- Metric normalization
+- Empty/null tolerance
+
+## 6. Document data source
+
+Document source URL, update cadence, and known caveats in docs.

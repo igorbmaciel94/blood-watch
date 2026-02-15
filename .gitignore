@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# .NET / build
+[Bb]in/
+[Oo]bj/
+out/
+TestResults/
+*.user
+*.suo
+*.cache
+*.pdb
+*.mdb
+*.snupkg
+
+# Visual Studio
+.vs/
+*.rsuser
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/
+
+# NuGet
+*.nupkg
+.nuget/
+
+# Docker
+*.pid
+
+# Logs
+*.log
+
+# Local env files
+.env
+.env.*
