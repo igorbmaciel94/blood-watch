@@ -1,0 +1,155 @@
+using BloodWatch.Infrastructure.Persistence.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace BloodWatch.Infrastructure.Persistence;
+
+public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> options) : DbContext(options)
+{
+    public DbSet<SourceEntity> Sources => Set<SourceEntity>();
+    public DbSet<RegionEntity> Regions => Set<RegionEntity>();
+    public DbSet<SnapshotEntity> Snapshots => Set<SnapshotEntity>();
+    public DbSet<SnapshotItemEntity> SnapshotItems => Set<SnapshotItemEntity>();
+    public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
+    public DbSet<EventEntity> Events => Set<EventEntity>();
+    public DbSet<DeliveryEntity> Deliveries => Set<DeliveryEntity>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<SourceEntity>(entity =>
+        {
+            entity.ToTable("sources");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.AdapterKey).HasColumnName("adapter_key").IsRequired();
+            entity.Property(x => x.Name).HasColumnName("name").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => x.AdapterKey).IsUnique();
+            entity.HasData(new SourceEntity
+            {
+                Id = SeedData.PortugalSourceId,
+                AdapterKey = "pt-transparencia-sns",
+                Name = "Portugal SNS Transparency",
+                CreatedAtUtc = SeedData.SeedCreatedAtUtc,
+            });
+        });
+
+        modelBuilder.Entity<RegionEntity>(entity =>
+        {
+            entity.ToTable("regions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
+            entity.Property(x => x.Key).HasColumnName("key").IsRequired();
+            entity.Property(x => x.DisplayName).HasColumnName("display_name").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.SourceId, x.Key }).IsUnique();
+            entity.HasOne(x => x.Source)
+                .WithMany(x => x.Regions)
+                .HasForeignKey(x => x.SourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SnapshotEntity>(entity =>
+        {
+            entity.ToTable("snapshots");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
+            entity.Property(x => x.CapturedAtUtc).HasColumnName("captured_at_utc").IsRequired();
+            entity.Property(x => x.ReferenceDate).HasColumnName("reference_date");
+            entity.Property(x => x.Hash).HasColumnName("hash").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.SourceId, x.CapturedAtUtc });
+            entity.HasOne(x => x.Source)
+                .WithMany(x => x.Snapshots)
+                .HasForeignKey(x => x.SourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SnapshotItemEntity>(entity =>
+        {
+            entity.ToTable("snapshot_items");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SnapshotId).HasColumnName("snapshot_id").IsRequired();
+            entity.Property(x => x.RegionId).HasColumnName("region_id").IsRequired();
+            entity.Property(x => x.MetricKey).HasColumnName("metric_key").IsRequired();
+            entity.Property(x => x.Value).HasColumnName("value").HasPrecision(12, 2).IsRequired();
+            entity.Property(x => x.Unit).HasColumnName("unit").IsRequired();
+            entity.Property(x => x.Severity).HasColumnName("severity");
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.SnapshotId, x.RegionId, x.MetricKey }).IsUnique();
+            entity.HasOne(x => x.Snapshot)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.SnapshotId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Region)
+                .WithMany(x => x.SnapshotItems)
+                .HasForeignKey(x => x.RegionId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SubscriptionEntity>(entity =>
+        {
+            entity.ToTable("subscriptions");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
+            entity.Property(x => x.TypeKey).HasColumnName("type_key").IsRequired();
+            entity.Property(x => x.Target).HasColumnName("target").IsRequired();
+            entity.Property(x => x.RegionFilter).HasColumnName("region_filter");
+            entity.Property(x => x.IsEnabled).HasColumnName("is_enabled").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.DisabledAtUtc).HasColumnName("disabled_at_utc");
+            entity.HasIndex(x => new { x.SourceId, x.IsEnabled });
+            entity.HasOne(x => x.Source)
+                .WithMany(x => x.Subscriptions)
+                .HasForeignKey(x => x.SourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EventEntity>(entity =>
+        {
+            entity.ToTable("events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
+            entity.Property(x => x.SnapshotId).HasColumnName("snapshot_id").IsRequired();
+            entity.Property(x => x.RegionId).HasColumnName("region_id");
+            entity.Property(x => x.RuleKey).HasColumnName("rule_key").IsRequired();
+            entity.Property(x => x.MetricKey).HasColumnName("metric_key").IsRequired();
+            entity.Property(x => x.PayloadJson).HasColumnName("payload_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.SourceId, x.CreatedAtUtc });
+            entity.HasOne(x => x.Source)
+                .WithMany(x => x.Events)
+                .HasForeignKey(x => x.SourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Snapshot)
+                .WithMany(x => x.Events)
+                .HasForeignKey(x => x.SnapshotId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Region)
+                .WithMany(x => x.Events)
+                .HasForeignKey(x => x.RegionId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<DeliveryEntity>(entity =>
+        {
+            entity.ToTable("deliveries");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.EventId).HasColumnName("event_id").IsRequired();
+            entity.Property(x => x.SubscriptionId).HasColumnName("subscription_id").IsRequired();
+            entity.Property(x => x.Status).HasColumnName("status").IsRequired();
+            entity.Property(x => x.LastError).HasColumnName("last_error");
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.SentAtUtc).HasColumnName("sent_at_utc");
+            entity.HasIndex(x => new { x.EventId, x.Status });
+            entity.HasOne(x => x.Event)
+                .WithMany(x => x.Deliveries)
+                .HasForeignKey(x => x.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Subscription)
+                .WithMany(x => x.Deliveries)
+                .HasForeignKey(x => x.SubscriptionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+}
