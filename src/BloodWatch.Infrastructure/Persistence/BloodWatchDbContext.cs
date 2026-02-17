@@ -59,6 +59,7 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
             entity.Property(x => x.Hash).HasColumnName("hash").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.HasIndex(x => new { x.SourceId, x.CapturedAtUtc });
+            entity.HasIndex(x => new { x.SourceId, x.Hash }).IsUnique();
             entity.HasOne(x => x.Source)
                 .WithMany(x => x.Snapshots)
                 .HasForeignKey(x => x.SourceId)

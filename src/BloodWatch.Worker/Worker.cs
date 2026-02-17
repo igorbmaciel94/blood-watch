@@ -1,36 +1,49 @@
-using BloodWatch.Core.Contracts;
+using Microsoft.Extensions.Options;
 
 namespace BloodWatch.Worker;
 
 public sealed class IngestionWorker(
-    IEnumerable<IDataSourceAdapter> adapters,
+    IServiceScopeFactory scopeFactory,
+    IOptionsMonitor<FetchPortugalReservesOptions> optionsMonitor,
     ILogger<IngestionWorker> logger) : BackgroundService
 {
-    private readonly IReadOnlyCollection<IDataSourceAdapter> _adapters = adapters.ToArray();
+    private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
+    private readonly IOptionsMonitor<FetchPortugalReservesOptions> _optionsMonitor = optionsMonitor;
     private readonly ILogger<IngestionWorker> _logger = logger;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            foreach (var adapter in _adapters)
+            try
             {
-                try
-                {
-                    var snapshot = await adapter.FetchLatestAsync(stoppingToken);
-                    _logger.LogInformation(
-                        "Fetched snapshot from {AdapterKey} at {CapturedAtUtc}. Items: {ItemCount}.",
-                        adapter.AdapterKey,
-                        snapshot.CapturedAtUtc,
-                        snapshot.Items.Count);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Snapshot pull failed for adapter {AdapterKey}.", adapter.AdapterKey);
-                }
+                using var scope = _scopeFactory.CreateScope();
+                var fetchPortugalReservesJob = scope.ServiceProvider.GetRequiredService<FetchPortugalReservesJob>();
+                var result = await fetchPortugalReservesJob.ExecuteAsync(stoppingToken);
+
+                _logger.LogInformation(
+                    "FetchPortugalReserves completed. InsertedSnapshots: {InsertedSnapshots}; SkippedDuplicates: {SkippedDuplicates}; InsertedItems: {InsertedItems}.",
+                    result.InsertedSnapshots,
+                    result.SkippedDuplicates,
+                    result.InsertedItems);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "FetchPortugalReserves execution failed.");
             }
 
-            await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
+            try
+            {
+                await Task.Delay(_optionsMonitor.CurrentValue.GetInterval(), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 }

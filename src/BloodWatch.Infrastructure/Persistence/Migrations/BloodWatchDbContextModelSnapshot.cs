@@ -171,6 +171,9 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
 
             b.HasIndex("SourceId", "CapturedAtUtc");
 
+            b.HasIndex("SourceId", "Hash")
+                .IsUnique();
+
             b.ToTable("snapshots", (string)null);
         });
 

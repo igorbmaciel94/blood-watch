@@ -18,7 +18,10 @@ docker compose logs -f worker
 - If ingestion fails due to schema changes, check adapter logs and update mapping.
 
 ## Common env vars
-- `ConnectionStrings__BloodWatchDb`
-- `BLOODWATCH__INGEST_INTERVAL_MINUTES`
+- `ConnectionStrings__BloodWatch`
+- `BloodWatch__Worker__FetchPortugalReserves__IntervalMinutes`
+- `BloodWatch__Portugal__TransparenciaSns__TimeoutSeconds`
+- `BloodWatch__Portugal__TransparenciaSns__MaxRetries`
+- `BloodWatch__Portugal__TransparenciaSns__UserAgent`
 - `BLOODWATCH__API_KEY` (for write endpoints)
 - `BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS`

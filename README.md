@@ -67,3 +67,4 @@ docs/
 
 - Architecture: `docs/architecture.md`
 - Adapter guide: `docs/adapter-howto.md`
+- Portugal data source: `docs/data-sources/portugal-reservas.md`
