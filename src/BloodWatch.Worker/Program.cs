@@ -10,6 +10,10 @@ builder.Services
     .AddBloodWatchInfrastructure(builder.Configuration)
     .AddPortugalAdapter();
 
+builder.Services
+    .Configure<FetchPortugalReservesOptions>(builder.Configuration.GetSection(FetchPortugalReservesOptions.SectionName))
+    .AddScoped<FetchPortugalReservesJob>();
+
 builder.Services.AddHostedService<IngestionWorker>();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
