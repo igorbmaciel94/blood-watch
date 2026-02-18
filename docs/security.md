@@ -22,4 +22,4 @@ It must not provide medical advice.
 
 ## Deletion
 - Provide a way to disable/delete subscriptions
-- Keep snapshot history immutable/auditable (public data) unless required otherwise
+- Keep public reserve reads latest-state and auditable through operational event logs

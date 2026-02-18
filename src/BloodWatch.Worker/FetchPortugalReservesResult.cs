@@ -1,6 +1,7 @@
 namespace BloodWatch.Worker;
 
 public sealed record FetchPortugalReservesResult(
-    int InsertedSnapshots,
-    int SkippedDuplicates,
-    int InsertedItems);
+    int InsertedCurrentReserves,
+    int UpdatedCurrentReserves,
+    int CarriedForwardCurrentReserves,
+    DateTime PolledAtUtc);

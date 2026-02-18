@@ -7,7 +7,7 @@ Accepted
 We need:
 - migrations
 - consistent query semantics across dev and prod
-- historical snapshots + indexing
+- latest-state reserves + indexing
 
 Switching from SQLite later can introduce subtle differences and migration churn.
 

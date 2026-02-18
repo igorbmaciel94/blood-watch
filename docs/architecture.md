@@ -1,6 +1,6 @@
 # BloodWatch Architecture
 
-This document describes the M0 baseline architecture: ingestion contracts, Postgres persistence, local Docker workflow, and API/worker runtime topology.
+This document describes the M0 baseline architecture: ingestion contracts, latest-state Postgres persistence, local Docker workflow, and API/worker runtime topology.
 
 > Disclaimer: No medical advice. BloodWatch reports public data and automation events only.
 
@@ -29,8 +29,7 @@ flowchart LR
 The initial schema includes:
 - `sources`
 - `regions`
-- `snapshots`
-- `snapshot_items`
+- `current_reserves`
 - `subscriptions`
 - `events`
 - `deliveries`

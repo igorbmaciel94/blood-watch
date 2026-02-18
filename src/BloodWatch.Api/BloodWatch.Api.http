@@ -1,6 +1,36 @@
 @BloodWatch.Api_HostAddress = http://localhost:0
 
-GET {{BloodWatch.Api_HostAddress}}/weatherforecast/
+GET {{BloodWatch.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/sources
+Accept: application/json
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/regions?source=pt-transparencia-sns
+Accept: application/json
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/reserves/latest?source=pt-transparencia-sns
+Accept: application/json
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte
+Accept: application/json
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/reserves/latest?source=pt-transparencia-sns&metric=overall
+Accept: application/json
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall
 Accept: application/json
 
 ###

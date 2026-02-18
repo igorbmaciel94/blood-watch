@@ -26,6 +26,13 @@ docker compose up --build
 - Health: [http://localhost:8080/health](http://localhost:8080/health)
 - OpenAPI spec: [http://localhost:8080/openapi/v1.json](http://localhost:8080/openapi/v1.json)
 - API docs UI (Swagger): [http://localhost:8080/docs](http://localhost:8080/docs)
+- Sources: [http://localhost:8080/api/v1/sources](http://localhost:8080/api/v1/sources)
+- Regions (requires `source`): [http://localhost:8080/api/v1/regions?source=pt-transparencia-sns](http://localhost:8080/api/v1/regions?source=pt-transparencia-sns)
+- Latest reserves (`source` required; optional `region` and `metric`):
+  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns)
+  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte)
+  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&metric=overall](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&metric=overall)
+  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall)
 
 ### 3) Verify Worker Health
 

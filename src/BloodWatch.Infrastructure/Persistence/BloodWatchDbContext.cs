@@ -7,8 +7,7 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
 {
     public DbSet<SourceEntity> Sources => Set<SourceEntity>();
     public DbSet<RegionEntity> Regions => Set<RegionEntity>();
-    public DbSet<SnapshotEntity> Snapshots => Set<SnapshotEntity>();
-    public DbSet<SnapshotItemEntity> SnapshotItems => Set<SnapshotItemEntity>();
+    public DbSet<CurrentReserveEntity> CurrentReserves => Set<CurrentReserveEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
     public DbSet<EventEntity> Events => Set<EventEntity>();
     public DbSet<DeliveryEntity> Deliveries => Set<DeliveryEntity>();
@@ -24,6 +23,7 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
             entity.Property(x => x.AdapterKey).HasColumnName("adapter_key").IsRequired();
             entity.Property(x => x.Name).HasColumnName("name").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.Property(x => x.LastPolledAtUtc).HasColumnName("last_polled_at_utc");
             entity.HasIndex(x => x.AdapterKey).IsUnique();
             entity.HasData(new SourceEntity
             {
@@ -31,6 +31,7 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
                 AdapterKey = "pt-transparencia-sns",
                 Name = "Portugal SNS Transparency",
                 CreatedAtUtc = SeedData.SeedCreatedAtUtc,
+                LastPolledAtUtc = null,
             });
         });
 
@@ -49,41 +50,27 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<SnapshotEntity>(entity =>
+        modelBuilder.Entity<CurrentReserveEntity>(entity =>
         {
-            entity.ToTable("snapshots");
+            entity.ToTable("current_reserves");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
-            entity.Property(x => x.CapturedAtUtc).HasColumnName("captured_at_utc").IsRequired();
-            entity.Property(x => x.ReferenceDate).HasColumnName("reference_date");
-            entity.Property(x => x.Hash).HasColumnName("hash").IsRequired();
-            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
-            entity.HasIndex(x => new { x.SourceId, x.CapturedAtUtc });
-            entity.HasIndex(x => new { x.SourceId, x.Hash }).IsUnique();
-            entity.HasOne(x => x.Source)
-                .WithMany(x => x.Snapshots)
-                .HasForeignKey(x => x.SourceId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<SnapshotItemEntity>(entity =>
-        {
-            entity.ToTable("snapshot_items");
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.SnapshotId).HasColumnName("snapshot_id").IsRequired();
             entity.Property(x => x.RegionId).HasColumnName("region_id").IsRequired();
             entity.Property(x => x.MetricKey).HasColumnName("metric_key").IsRequired();
             entity.Property(x => x.Value).HasColumnName("value").HasPrecision(12, 2).IsRequired();
             entity.Property(x => x.Unit).HasColumnName("unit").IsRequired();
             entity.Property(x => x.Severity).HasColumnName("severity");
-            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
-            entity.HasIndex(x => new { x.SnapshotId, x.RegionId, x.MetricKey }).IsUnique();
-            entity.HasOne(x => x.Snapshot)
-                .WithMany(x => x.Items)
-                .HasForeignKey(x => x.SnapshotId)
+            entity.Property(x => x.ReferenceDate).HasColumnName("reference_date");
+            entity.Property(x => x.CapturedAtUtc).HasColumnName("captured_at_utc").IsRequired();
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.SourceId, x.RegionId, x.MetricKey }).IsUnique();
+            entity.HasIndex(x => new { x.SourceId, x.CapturedAtUtc });
+            entity.HasOne(x => x.Source)
+                .WithMany(x => x.CurrentReserves)
+                .HasForeignKey(x => x.SourceId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Region)
-                .WithMany(x => x.SnapshotItems)
+                .WithMany(x => x.CurrentReserves)
                 .HasForeignKey(x => x.RegionId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
@@ -111,20 +98,21 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
             entity.ToTable("events");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
-            entity.Property(x => x.SnapshotId).HasColumnName("snapshot_id").IsRequired();
+            entity.Property(x => x.CurrentReserveId).HasColumnName("current_reserve_id").IsRequired();
             entity.Property(x => x.RegionId).HasColumnName("region_id");
             entity.Property(x => x.RuleKey).HasColumnName("rule_key").IsRequired();
             entity.Property(x => x.MetricKey).HasColumnName("metric_key").IsRequired();
             entity.Property(x => x.PayloadJson).HasColumnName("payload_json").HasColumnType("jsonb").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            entity.HasIndex(x => x.CurrentReserveId);
             entity.HasIndex(x => new { x.SourceId, x.CreatedAtUtc });
             entity.HasOne(x => x.Source)
                 .WithMany(x => x.Events)
                 .HasForeignKey(x => x.SourceId)
                 .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(x => x.Snapshot)
+            entity.HasOne(x => x.CurrentReserve)
                 .WithMany(x => x.Events)
-                .HasForeignKey(x => x.SnapshotId)
+                .HasForeignKey(x => x.CurrentReserveId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Region)
                 .WithMany(x => x.Events)
