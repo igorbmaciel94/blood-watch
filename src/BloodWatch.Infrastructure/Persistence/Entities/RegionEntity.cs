@@ -9,6 +9,6 @@ public sealed class RegionEntity
     public DateTime CreatedAtUtc { get; set; }
 
     public SourceEntity Source { get; set; } = null!;
-    public ICollection<SnapshotItemEntity> SnapshotItems { get; set; } = [];
+    public ICollection<CurrentReserveEntity> CurrentReserves { get; set; } = [];
     public ICollection<EventEntity> Events { get; set; } = [];
 }

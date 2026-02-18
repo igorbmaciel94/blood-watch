@@ -20,6 +20,63 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.CurrentReserveEntity", b =>
+        {
+            b.Property<Guid>("Id")
+                .ValueGeneratedOnAdd()
+                .HasColumnType("uuid");
+
+            b.Property<DateTime>("CapturedAtUtc")
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("captured_at_utc");
+
+            b.Property<string>("MetricKey")
+                .IsRequired()
+                .HasColumnType("text")
+                .HasColumnName("metric_key");
+
+            b.Property<DateOnly?>("ReferenceDate")
+                .HasColumnType("date")
+                .HasColumnName("reference_date");
+
+            b.Property<Guid>("RegionId")
+                .HasColumnType("uuid")
+                .HasColumnName("region_id");
+
+            b.Property<string>("Severity")
+                .HasColumnType("text")
+                .HasColumnName("severity");
+
+            b.Property<Guid>("SourceId")
+                .HasColumnType("uuid")
+                .HasColumnName("source_id");
+
+            b.Property<string>("Unit")
+                .IsRequired()
+                .HasColumnType("text")
+                .HasColumnName("unit");
+
+            b.Property<DateTime>("UpdatedAtUtc")
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("updated_at_utc");
+
+            b.Property<decimal>("Value")
+                .HasPrecision(12, 2)
+                .HasColumnType("numeric(12,2)")
+                .HasColumnName("value");
+
+            b.HasKey("Id");
+
+            b.HasIndex("RegionId");
+
+            b.HasIndex("SourceId", "CapturedAtUtc");
+
+            b.HasIndex("SourceId", "RegionId", "MetricKey")
+                .IsUnique();
+
+            b.ToTable("current_reserves", (string)null);
+        });
+
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.DeliveryEntity", b =>
         {
             b.Property<Guid>("Id")
@@ -89,9 +146,9 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
                 .HasColumnType("text")
                 .HasColumnName("rule_key");
 
-            b.Property<Guid>("SnapshotId")
+            b.Property<Guid>("CurrentReserveId")
                 .HasColumnType("uuid")
-                .HasColumnName("snapshot_id");
+                .HasColumnName("current_reserve_id");
 
             b.Property<Guid>("SourceId")
                 .HasColumnType("uuid")
@@ -101,7 +158,7 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
 
             b.HasIndex("RegionId");
 
-            b.HasIndex("SnapshotId");
+            b.HasIndex("CurrentReserveId");
 
             b.HasIndex("SourceId", "CreatedAtUtc");
 
@@ -140,90 +197,6 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
             b.ToTable("regions", (string)null);
         });
 
-        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SnapshotEntity", b =>
-        {
-            b.Property<Guid>("Id")
-                .ValueGeneratedOnAdd()
-                .HasColumnType("uuid");
-
-            b.Property<DateTime>("CapturedAtUtc")
-                .HasColumnType("timestamp with time zone")
-                .HasColumnName("captured_at_utc");
-
-            b.Property<DateTime>("CreatedAtUtc")
-                .HasColumnType("timestamp with time zone")
-                .HasColumnName("created_at_utc");
-
-            b.Property<string>("Hash")
-                .IsRequired()
-                .HasColumnType("text")
-                .HasColumnName("hash");
-
-            b.Property<DateOnly?>("ReferenceDate")
-                .HasColumnType("date")
-                .HasColumnName("reference_date");
-
-            b.Property<Guid>("SourceId")
-                .HasColumnType("uuid")
-                .HasColumnName("source_id");
-
-            b.HasKey("Id");
-
-            b.HasIndex("SourceId", "CapturedAtUtc");
-
-            b.HasIndex("SourceId", "Hash")
-                .IsUnique();
-
-            b.ToTable("snapshots", (string)null);
-        });
-
-        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SnapshotItemEntity", b =>
-        {
-            b.Property<Guid>("Id")
-                .ValueGeneratedOnAdd()
-                .HasColumnType("uuid");
-
-            b.Property<DateTime>("CreatedAtUtc")
-                .HasColumnType("timestamp with time zone")
-                .HasColumnName("created_at_utc");
-
-            b.Property<string>("MetricKey")
-                .IsRequired()
-                .HasColumnType("text")
-                .HasColumnName("metric_key");
-
-            b.Property<Guid>("RegionId")
-                .HasColumnType("uuid")
-                .HasColumnName("region_id");
-
-            b.Property<string>("Severity")
-                .HasColumnType("text")
-                .HasColumnName("severity");
-
-            b.Property<Guid>("SnapshotId")
-                .HasColumnType("uuid")
-                .HasColumnName("snapshot_id");
-
-            b.Property<string>("Unit")
-                .IsRequired()
-                .HasColumnType("text")
-                .HasColumnName("unit");
-
-            b.Property<decimal>("Value")
-                .HasPrecision(12, 2)
-                .HasColumnType("numeric(12,2)")
-                .HasColumnName("value");
-
-            b.HasKey("Id");
-
-            b.HasIndex("RegionId");
-
-            b.HasIndex("SnapshotId", "RegionId", "MetricKey")
-                .IsUnique();
-
-            b.ToTable("snapshot_items", (string)null);
-        });
-
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SourceEntity", b =>
         {
             b.Property<Guid>("Id")
@@ -238,6 +211,10 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
             b.Property<DateTime>("CreatedAtUtc")
                 .HasColumnType("timestamp with time zone")
                 .HasColumnName("created_at_utc");
+
+            b.Property<DateTime?>("LastPolledAtUtc")
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("last_polled_at_utc");
 
             b.Property<string>("Name")
                 .IsRequired()
@@ -257,6 +234,7 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
                     Id = new Guid("51abf65a-c68a-4bc7-b9f2-3f8f3a9bb2b1"),
                     AdapterKey = "pt-transparencia-sns",
                     CreatedAtUtc = new DateTime(2026, 2, 15, 0, 0, 0, DateTimeKind.Utc),
+                    LastPolledAtUtc = (DateTime?)null,
                     Name = "Portugal SNS Transparency"
                 });
         });
@@ -323,6 +301,25 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
             b.Navigation("Subscription");
         });
 
+        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.CurrentReserveEntity", b =>
+        {
+            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.RegionEntity", "Region")
+                .WithMany("CurrentReserves")
+                .HasForeignKey("RegionId")
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired();
+
+            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.SourceEntity", "Source")
+                .WithMany("CurrentReserves")
+                .HasForeignKey("SourceId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+
+            b.Navigation("Region");
+
+            b.Navigation("Source");
+        });
+
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.EventEntity", b =>
         {
             b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.RegionEntity", "Region")
@@ -330,9 +327,9 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
                 .HasForeignKey("RegionId")
                 .OnDelete(DeleteBehavior.Restrict);
 
-            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.SnapshotEntity", "Snapshot")
+            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.CurrentReserveEntity", "CurrentReserve")
                 .WithMany("Events")
-                .HasForeignKey("SnapshotId")
+                .HasForeignKey("CurrentReserveId")
                 .OnDelete(DeleteBehavior.Cascade)
                 .IsRequired();
 
@@ -344,7 +341,7 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
 
             b.Navigation("Region");
 
-            b.Navigation("Snapshot");
+            b.Navigation("CurrentReserve");
 
             b.Navigation("Source");
         });
@@ -358,36 +355,6 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
                 .IsRequired();
 
             b.Navigation("Source");
-        });
-
-        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SnapshotEntity", b =>
-        {
-            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.SourceEntity", "Source")
-                .WithMany("Snapshots")
-                .HasForeignKey("SourceId")
-                .OnDelete(DeleteBehavior.Cascade)
-                .IsRequired();
-
-            b.Navigation("Source");
-        });
-
-        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SnapshotItemEntity", b =>
-        {
-            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.RegionEntity", "Region")
-                .WithMany("SnapshotItems")
-                .HasForeignKey("RegionId")
-                .OnDelete(DeleteBehavior.Restrict)
-                .IsRequired();
-
-            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.SnapshotEntity", "Snapshot")
-                .WithMany("Items")
-                .HasForeignKey("SnapshotId")
-                .OnDelete(DeleteBehavior.Cascade)
-                .IsRequired();
-
-            b.Navigation("Region");
-
-            b.Navigation("Snapshot");
         });
 
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SubscriptionEntity", b =>
@@ -408,25 +375,18 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.RegionEntity", b =>
         {
+            b.Navigation("CurrentReserves");
+
             b.Navigation("Events");
-
-            b.Navigation("SnapshotItems");
-        });
-
-        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SnapshotEntity", b =>
-        {
-            b.Navigation("Events");
-
-            b.Navigation("Items");
         });
 
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SourceEntity", b =>
         {
+            b.Navigation("CurrentReserves");
+
             b.Navigation("Events");
 
             b.Navigation("Regions");
-
-            b.Navigation("Snapshots");
 
             b.Navigation("Subscriptions");
         });

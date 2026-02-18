@@ -1,6 +1,7 @@
 using BloodWatch.Adapters.Portugal.DependencyInjection;
 using BloodWatch.Api;
 using BloodWatch.Api.DependencyInjection;
+using BloodWatch.Api.Endpoints;
 using BloodWatch.Infrastructure;
 using BloodWatch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -14,8 +15,10 @@ builder.Services
 
 var app = builder.Build();
 
-var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
-await app.Services.ApplyMigrationsWithRetryAsync(startupLogger);
+await EnsureDatabaseReadyAsync(app);
+
+app.UseExceptionHandler();
+app.UseRateLimiter();
 
 app.MapOpenApi();
 
@@ -38,23 +41,31 @@ app.MapGet("/health", async (BloodWatchDbContext dbContext, CancellationToken ca
     var canConnect = await dbContext.Database.CanConnectAsync(cancellationToken);
     return canConnect
         ? Results.Ok(new { status = "healthy" })
-        : Results.Problem("Database unavailable", statusCode: StatusCodes.Status503ServiceUnavailable);
+        : Results.Problem(
+            title: "Database unavailable",
+            detail: "The API could not connect to its database.",
+            statusCode: StatusCodes.Status503ServiceUnavailable,
+            type: "https://httpstatuses.com/503");
 });
 
-app.MapGet("/api/v1/sources", async (BloodWatchDbContext dbContext, CancellationToken cancellationToken) =>
-{
-    var sources = await dbContext.Sources
-        .AsNoTracking()
-        .OrderBy(source => source.Name)
-        .Select(source => new
-        {
-            source.Id,
-            source.AdapterKey,
-            source.Name,
-        })
-        .ToListAsync(cancellationToken);
-
-    return Results.Ok(sources);
-}).ExcludeFromDescription();
+app.MapPublicReadEndpoints();
 
 await app.RunAsync();
+
+static async Task EnsureDatabaseReadyAsync(WebApplication app)
+{
+    var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<BloodWatchDbContext>();
+    if (!dbContext.Database.IsRelational())
+    {
+        await dbContext.Database.EnsureCreatedAsync();
+        startupLogger.LogInformation("Database provider is non-relational. EnsureCreated completed.");
+        return;
+    }
+
+    await app.Services.ApplyMigrationsWithRetryAsync(startupLogger);
+}
+
+public partial class Program;

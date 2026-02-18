@@ -23,43 +23,68 @@ public sealed class FetchPortugalReservesJob(
                 $"No adapter registered for {PortugalAdapter.DefaultAdapterKey}.");
 
         var snapshot = await adapter.FetchLatestAsync(cancellationToken);
-        var snapshotHash = SnapshotHashCalculator.Compute(snapshot);
 
-        var source = await EnsureSourceAsync(snapshot.Source, cancellationToken);
-        if (await SnapshotAlreadyExistsAsync(source.Id, snapshotHash, cancellationToken))
+        var polledAtUtc = DateTime.UtcNow;
+        var source = await EnsureSourceAsync(snapshot.Source, polledAtUtc, cancellationToken);
+        source.LastPolledAtUtc = polledAtUtc;
+
+        var regionsByKey = await EnsureRegionsAsync(source.Id, snapshot.Items, polledAtUtc, cancellationToken);
+        var incomingByKey = BuildIncomingReserves(snapshot, regionsByKey);
+        var existingRows = await _dbContext.CurrentReserves
+            .Where(entry => entry.SourceId == source.Id)
+            .ToListAsync(cancellationToken);
+
+        var existingByKey = existingRows.ToDictionary(
+            entry => new CurrentReserveKey(entry.RegionId, entry.MetricKey),
+            entry => entry);
+
+        var insertedCount = 0;
+        var updatedCount = 0;
+        var matchedExistingCount = 0;
+
+        foreach (var incoming in incomingByKey.Values)
         {
-            return new FetchPortugalReservesResult(0, 1, 0);
-        }
-
-        var nowUtc = DateTime.UtcNow;
-        var regionsByKey = await EnsureRegionsAsync(source.Id, snapshot.Items, nowUtc, cancellationToken);
-        var snapshotEntity = BuildSnapshotEntity(snapshot, source.Id, snapshotHash, regionsByKey, nowUtc);
-
-        _dbContext.Snapshots.Add(snapshotEntity);
-
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            return new FetchPortugalReservesResult(1, 0, snapshotEntity.Items.Count);
-        }
-        catch (DbUpdateException ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Snapshot persistence failed for adapter {AdapterKey}. Checking duplicate hash fallback.",
-                snapshot.Source.AdapterKey);
-
-            _dbContext.ChangeTracker.Clear();
-            if (await SnapshotAlreadyExistsAsync(source.Id, snapshotHash, cancellationToken))
+            if (existingByKey.TryGetValue(incoming.Key, out var existing))
             {
-                return new FetchPortugalReservesResult(0, 1, 0);
+                matchedExistingCount++;
+                existing.Value = incoming.Value;
+                existing.Unit = incoming.Unit;
+                existing.Severity = incoming.Severity;
+                existing.ReferenceDate = snapshot.ReferenceDate;
+                existing.CapturedAtUtc = snapshot.CapturedAtUtc;
+                existing.UpdatedAtUtc = polledAtUtc;
+                updatedCount++;
+                continue;
             }
 
-            throw;
+            _dbContext.CurrentReserves.Add(new CurrentReserveEntity
+            {
+                Id = Guid.NewGuid(),
+                SourceId = source.Id,
+                RegionId = incoming.Key.RegionId,
+                MetricKey = incoming.Key.MetricKey,
+                Value = incoming.Value,
+                Unit = incoming.Unit,
+                Severity = incoming.Severity,
+                ReferenceDate = snapshot.ReferenceDate,
+                CapturedAtUtc = snapshot.CapturedAtUtc,
+                UpdatedAtUtc = polledAtUtc,
+            });
+
+            insertedCount++;
         }
+
+        var carriedForwardCount = Math.Max(0, existingByKey.Count - matchedExistingCount);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new FetchPortugalReservesResult(
+            insertedCount,
+            updatedCount,
+            carriedForwardCount,
+            polledAtUtc);
     }
 
-    private async Task<SourceEntity> EnsureSourceAsync(SourceRef sourceRef, CancellationToken cancellationToken)
+    private async Task<SourceEntity> EnsureSourceAsync(SourceRef sourceRef, DateTime nowUtc, CancellationToken cancellationToken)
     {
         var source = await _dbContext.Sources
             .SingleOrDefaultAsync(entry => entry.AdapterKey == sourceRef.AdapterKey, cancellationToken);
@@ -74,11 +99,11 @@ public sealed class FetchPortugalReservesJob(
             Id = Guid.NewGuid(),
             AdapterKey = sourceRef.AdapterKey,
             Name = sourceRef.Name,
-            CreatedAtUtc = DateTime.UtcNow,
+            CreatedAtUtc = nowUtc,
+            LastPolledAtUtc = nowUtc,
         };
 
         _dbContext.Sources.Add(source);
-        await _dbContext.SaveChangesAsync(cancellationToken);
 
         return source;
     }
@@ -133,56 +158,58 @@ public sealed class FetchPortugalReservesJob(
 
         if (hasNewRegion)
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation(
+                "Detected {NewRegions} new regions for source {SourceId}.",
+                desiredRegionsByKey.Count - existingRegions.Count,
+                sourceId);
         }
 
         return existingByKey.ToDictionary(region => region.Key, region => region.Value.Id, StringComparer.Ordinal);
     }
 
-    private static SnapshotEntity BuildSnapshotEntity(
+    private static Dictionary<CurrentReserveKey, IncomingCurrentReserve> BuildIncomingReserves(
         Snapshot snapshot,
-        Guid sourceId,
-        string hash,
-        IReadOnlyDictionary<string, Guid> regionsByKey,
-        DateTime nowUtc)
+        IReadOnlyDictionary<string, Guid> regionsByKey)
     {
-        var snapshotEntity = new SnapshotEntity
-        {
-            Id = Guid.NewGuid(),
-            SourceId = sourceId,
-            CapturedAtUtc = snapshot.CapturedAtUtc,
-            ReferenceDate = snapshot.ReferenceDate,
-            Hash = hash,
-            CreatedAtUtc = nowUtc,
-        };
-
-        foreach (var item in snapshot.Items)
-        {
-            if (!regionsByKey.TryGetValue(item.Region.Key, out var regionId))
+        return snapshot.Items
+            .Select(item =>
             {
-                continue;
-            }
+                if (!regionsByKey.TryGetValue(item.Region.Key, out var regionId))
+                {
+                    return null;
+                }
 
-            snapshotEntity.Items.Add(new SnapshotItemEntity
-            {
-                Id = Guid.NewGuid(),
-                SnapshotId = snapshotEntity.Id,
-                RegionId = regionId,
-                MetricKey = item.Metric.Key,
-                Value = item.Value,
-                Unit = item.Unit,
-                Severity = item.Severity,
-                CreatedAtUtc = nowUtc,
-            });
-        }
+                return new IncomingCurrentReserve(
+                    new CurrentReserveKey(regionId, item.Metric.Key),
+                    item.Value,
+                    item.Unit,
+                    item.Severity);
+            })
+            .Where(item => item is not null)
+            .Cast<IncomingCurrentReserve>()
+            .GroupBy(item => item.Key)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var first = group.First();
+                    var severity = group
+                        .Select(item => item.Severity)
+                        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
-        return snapshotEntity;
+                    return new IncomingCurrentReserve(
+                        first.Key,
+                        group.Sum(item => item.Value),
+                        first.Unit,
+                        severity);
+                });
     }
 
-    private Task<bool> SnapshotAlreadyExistsAsync(Guid sourceId, string hash, CancellationToken cancellationToken)
-    {
-        return _dbContext.Snapshots
-            .AsNoTracking()
-            .AnyAsync(entry => entry.SourceId == sourceId && entry.Hash == hash, cancellationToken);
-    }
+    private sealed record CurrentReserveKey(Guid RegionId, string MetricKey);
+
+    private sealed record IncomingCurrentReserve(
+        CurrentReserveKey Key,
+        decimal Value,
+        string Unit,
+        string? Severity);
 }
