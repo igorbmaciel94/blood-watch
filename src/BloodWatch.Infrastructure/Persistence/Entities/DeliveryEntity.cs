@@ -5,6 +5,7 @@ public sealed class DeliveryEntity
     public Guid Id { get; set; }
     public Guid EventId { get; set; }
     public Guid SubscriptionId { get; set; }
+    public int AttemptCount { get; set; }
     public string Status { get; set; } = "pending";
     public string? LastError { get; set; }
     public DateTime CreatedAtUtc { get; set; }

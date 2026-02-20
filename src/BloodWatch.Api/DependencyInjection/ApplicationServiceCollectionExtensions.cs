@@ -1,7 +1,10 @@
 using System.Threading.RateLimiting;
+using BloodWatch.Api;
 using BloodWatch.Api.Options;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -63,7 +66,50 @@ public static class ApplicationServiceCollectionExtensions
             };
         });
 
-        services.AddOpenApi();
+        services.AddOpenApi(options =>
+        {
+            options.AddDocumentTransformer((document, _, _) =>
+            {
+                document.Components ??= new OpenApiComponents();
+                document.Components.SecuritySchemes ??= new Dictionary<string, OpenApiSecurityScheme>(StringComparer.Ordinal);
+
+                document.Components.SecuritySchemes[ApiAuthConstants.ApiKeySecuritySchemeId] = new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.ApiKey,
+                    Name = ApiAuthConstants.ApiKeyHeaderName,
+                    In = ParameterLocation.Header,
+                    Description = "API key required for subscription write/read-by-id/delete endpoints.",
+                };
+
+                return Task.CompletedTask;
+            });
+
+            options.AddOperationTransformer((operation, context, _) =>
+            {
+                var relativePath = context.Description.RelativePath ?? string.Empty;
+                if (!relativePath.StartsWith("api/v1/subscriptions", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Task.CompletedTask;
+                }
+
+                operation.Security ??= [];
+                operation.Security.Add(new OpenApiSecurityRequirement
+                {
+                    [
+                        new OpenApiSecurityScheme
+                        {
+                            Reference = new OpenApiReference
+                            {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = ApiAuthConstants.ApiKeySecuritySchemeId,
+                            },
+                        }
+                    ] = []
+                });
+
+                return Task.CompletedTask;
+            });
+        });
         return services;
     }
 }

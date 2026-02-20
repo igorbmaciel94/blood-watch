@@ -3,8 +3,11 @@ using BloodWatch.Core.Contracts;
 using BloodWatch.Core.Models;
 using BloodWatch.Infrastructure.Persistence;
 using BloodWatch.Worker;
+using BloodWatch.Worker.Alerts;
+using BloodWatch.Worker.Dispatch;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace BloodWatch.Core.Tests;
 
@@ -32,7 +35,9 @@ public sealed class FetchPortugalReservesJobTests
 
         var job = new FetchPortugalReservesJob(
             [adapter],
+            [],
             dbContext,
+            CreateDispatchEngine(dbContext),
             NullLogger<FetchPortugalReservesJob>.Instance);
 
         var firstRun = await job.ExecuteAsync();
@@ -81,7 +86,9 @@ public sealed class FetchPortugalReservesJobTests
 
         var job = new FetchPortugalReservesJob(
             [adapter],
+            [],
             dbContext,
+            CreateDispatchEngine(dbContext),
             NullLogger<FetchPortugalReservesJob>.Instance);
 
         var firstRun = await job.ExecuteAsync();
@@ -124,7 +131,9 @@ public sealed class FetchPortugalReservesJobTests
         var adapter = new SequenceAdapter(snapshot, snapshot);
         var job = new FetchPortugalReservesJob(
             [adapter],
+            [],
             dbContext,
+            CreateDispatchEngine(dbContext),
             NullLogger<FetchPortugalReservesJob>.Instance);
 
         var firstRun = await job.ExecuteAsync();
@@ -138,6 +147,44 @@ public sealed class FetchPortugalReservesJobTests
         Assert.Equal(secondRun.PolledAtUtc, source.LastPolledAtUtc.Value, TimeSpan.FromSeconds(1));
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ShouldPersistEventsIdempotently()
+    {
+        var dbOptions = new DbContextOptionsBuilder<BloodWatchDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+
+        await using var dbContext = new BloodWatchDbContext(dbOptions);
+        await dbContext.Database.EnsureCreatedAsync();
+
+        var snapshot = CreateSnapshot(
+            new DateTime(2026, 2, 19, 12, 0, 0, DateTimeKind.Utc),
+            new DateOnly(2026, 2, 1),
+            [new SnapshotItem(new Metric("overall", "Overall", "units"), new RegionRef("pt-norte", "Regiao de Saude Norte"), 100m, "units")]);
+
+        var adapter = new SequenceAdapter(snapshot, snapshot);
+        var constantEvent = new Event(
+            RuleKey: "test-rule",
+            Source: snapshot.Source,
+            Metric: new Metric("overall", "Overall", "units"),
+            Region: new RegionRef("pt-norte", "Regiao de Saude Norte"),
+            CreatedAtUtc: new DateTime(2026, 2, 19, 12, 5, 0, DateTimeKind.Utc),
+            PayloadJson: "{\"transitionKind\":\"entered-warning\"}");
+
+        var job = new FetchPortugalReservesJob(
+            [adapter],
+            [new ConstantRule(constantEvent)],
+            dbContext,
+            CreateDispatchEngine(dbContext),
+            NullLogger<FetchPortugalReservesJob>.Instance);
+
+        await job.ExecuteAsync();
+        await job.ExecuteAsync();
+
+        var eventRows = await dbContext.Events.ToListAsync();
+        Assert.Single(eventRows);
+    }
+
     private static Snapshot CreateSnapshot(
         DateTime capturedAtUtc,
         DateOnly referenceDate,
@@ -145,6 +192,15 @@ public sealed class FetchPortugalReservesJobTests
     {
         var source = new SourceRef(PortugalAdapter.DefaultAdapterKey, "Portugal SNS Transparency");
         return new Snapshot(source, capturedAtUtc, referenceDate, items);
+    }
+
+    private static DispatchEngine CreateDispatchEngine(BloodWatchDbContext dbContext)
+    {
+        return new DispatchEngine(
+            dbContext,
+            [],
+            NullLogger<DispatchEngine>.Instance,
+            Options.Create(new AlertThresholdOptions()));
     }
 
     private sealed class SequenceAdapter(params Snapshot[] snapshots) : IDataSourceAdapter
@@ -165,6 +221,22 @@ public sealed class FetchPortugalReservesJobTests
             var snapshot = _snapshots[Math.Min(_index, _snapshots.Count - 1)];
             _index++;
             return Task.FromResult(snapshot);
+        }
+    }
+
+    private sealed class ConstantRule(Event @event) : IRule
+    {
+        private readonly Event _event = @event;
+
+        public string RuleKey => _event.RuleKey;
+
+        public Task<IReadOnlyCollection<Event>> EvaluateAsync(
+            Snapshot? previousSnapshot,
+            Snapshot currentSnapshot,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyCollection<Event> events = [_event];
+            return Task.FromResult(events);
         }
     }
 }

@@ -49,6 +49,7 @@ app.MapGet("/health", async (BloodWatchDbContext dbContext, CancellationToken ca
 });
 
 app.MapPublicReadEndpoints();
+app.MapSubscriptionEndpoints();
 
 await app.RunAsync();
 

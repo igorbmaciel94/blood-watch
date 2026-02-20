@@ -9,6 +9,7 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
     public DbSet<RegionEntity> Regions => Set<RegionEntity>();
     public DbSet<CurrentReserveEntity> CurrentReserves => Set<CurrentReserveEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
+    public DbSet<SubscriptionNotificationStateEntity> SubscriptionNotificationStates => Set<SubscriptionNotificationStateEntity>();
     public DbSet<EventEntity> Events => Set<EventEntity>();
     public DbSet<DeliveryEntity> Deliveries => Set<DeliveryEntity>();
 
@@ -82,14 +83,34 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
             entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
             entity.Property(x => x.TypeKey).HasColumnName("type_key").IsRequired();
             entity.Property(x => x.Target).HasColumnName("target").IsRequired();
-            entity.Property(x => x.RegionFilter).HasColumnName("region_filter");
+            entity.Property(x => x.RegionFilter).HasColumnName("region_filter").IsRequired();
+            entity.Property(x => x.MetricFilter).HasColumnName("metric_filter").IsRequired();
             entity.Property(x => x.IsEnabled).HasColumnName("is_enabled").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.Property(x => x.DisabledAtUtc).HasColumnName("disabled_at_utc");
             entity.HasIndex(x => new { x.SourceId, x.IsEnabled });
+            entity.HasIndex(x => new { x.SourceId, x.RegionFilter, x.MetricFilter, x.IsEnabled });
             entity.HasOne(x => x.Source)
                 .WithMany(x => x.Subscriptions)
                 .HasForeignKey(x => x.SourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SubscriptionNotificationStateEntity>(entity =>
+        {
+            entity.ToTable("subscription_notification_states");
+            entity.HasKey(x => x.SubscriptionId);
+            entity.Property(x => x.SubscriptionId).HasColumnName("subscription_id").IsRequired();
+            entity.Property(x => x.IsLowOpen).HasColumnName("is_low_open").HasDefaultValue(false).IsRequired();
+            entity.Property(x => x.LastLowNotifiedAtUtc).HasColumnName("last_low_notified_at_utc");
+            entity.Property(x => x.LastLowNotifiedBucket).HasColumnName("last_low_notified_bucket");
+            entity.Property(x => x.LastLowNotifiedUnits).HasColumnName("last_low_notified_units").HasPrecision(12, 2);
+            entity.Property(x => x.LastRecoveryNotifiedAtUtc).HasColumnName("last_recovery_notified_at_utc");
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            entity.HasIndex(x => x.UpdatedAtUtc);
+            entity.HasOne(x => x.Subscription)
+                .WithOne(x => x.NotificationState)
+                .HasForeignKey<SubscriptionNotificationStateEntity>(x => x.SubscriptionId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -102,10 +123,12 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
             entity.Property(x => x.RegionId).HasColumnName("region_id");
             entity.Property(x => x.RuleKey).HasColumnName("rule_key").IsRequired();
             entity.Property(x => x.MetricKey).HasColumnName("metric_key").IsRequired();
+            entity.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").IsRequired();
             entity.Property(x => x.PayloadJson).HasColumnName("payload_json").HasColumnType("jsonb").IsRequired();
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.HasIndex(x => x.CurrentReserveId);
             entity.HasIndex(x => new { x.SourceId, x.CreatedAtUtc });
+            entity.HasIndex(x => x.IdempotencyKey).IsUnique();
             entity.HasOne(x => x.Source)
                 .WithMany(x => x.Events)
                 .HasForeignKey(x => x.SourceId)
@@ -126,11 +149,13 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
             entity.HasKey(x => x.Id);
             entity.Property(x => x.EventId).HasColumnName("event_id").IsRequired();
             entity.Property(x => x.SubscriptionId).HasColumnName("subscription_id").IsRequired();
+            entity.Property(x => x.AttemptCount).HasColumnName("attempt_count").IsRequired();
             entity.Property(x => x.Status).HasColumnName("status").IsRequired();
             entity.Property(x => x.LastError).HasColumnName("last_error");
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             entity.Property(x => x.SentAtUtc).HasColumnName("sent_at_utc");
             entity.HasIndex(x => new { x.EventId, x.Status });
+            entity.HasIndex(x => new { x.EventId, x.SubscriptionId }).IsUnique();
             entity.HasOne(x => x.Event)
                 .WithMany(x => x.Deliveries)
                 .HasForeignKey(x => x.EventId)
