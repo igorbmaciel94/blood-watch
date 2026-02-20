@@ -8,6 +8,7 @@ public sealed class EventEntity
     public Guid? RegionId { get; set; }
     public string RuleKey { get; set; } = string.Empty;
     public string MetricKey { get; set; } = string.Empty;
+    public string IdempotencyKey { get; set; } = string.Empty;
     public string PayloadJson { get; set; } = "{}";
     public DateTime CreatedAtUtc { get; set; }
 

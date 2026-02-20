@@ -25,6 +25,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=bloodwatch;Username=bloodwatch;Password=bloodwatch
+      BLOODWATCH__API_KEY: 455c3b35cb2de7135b488761de40f0d9abfd848b368d4ea1355ee1ddd1a9a2bd
     ports:
       - "8080:8080"
     depends_on:

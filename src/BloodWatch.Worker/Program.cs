@@ -1,7 +1,12 @@
 using BloodWatch.Adapters.Portugal.DependencyInjection;
+using BloodWatch.Core.Contracts;
 using BloodWatch.Infrastructure;
 using BloodWatch.Infrastructure.Persistence;
 using BloodWatch.Worker;
+using BloodWatch.Worker.Alerts;
+using BloodWatch.Worker.Dispatch;
+using BloodWatch.Worker.Notifiers;
+using BloodWatch.Worker.Rules;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,8 +16,26 @@ builder.Services
     .AddPortugalAdapter();
 
 builder.Services
+    .Configure<AlertThresholdOptions>(builder.Configuration.GetSection(AlertThresholdOptions.SectionName))
     .Configure<FetchPortugalReservesOptions>(builder.Configuration.GetSection(FetchPortugalReservesOptions.SectionName))
+    .AddSingleton<CompatibilityPriorityService>()
+    .AddSingleton<AlertThresholdProfileResolver>()
+    .AddSingleton<IRule, LowStockThresholdRule>()
+    .AddScoped<DispatchEngine>()
     .AddScoped<FetchPortugalReservesJob>();
+
+builder.Services
+    .AddHttpClient<DiscordWebhookNotifier>((serviceProvider, httpClient) =>
+    {
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var timeoutRaw = configuration["BLOODWATCH:DISCORD_WEBHOOK_TIMEOUT_SECONDS"]
+            ?? Environment.GetEnvironmentVariable("BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS");
+        var timeoutSeconds = int.TryParse(timeoutRaw, out var parsedValue) ? parsedValue : 10;
+
+        httpClient.Timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 5, 120));
+    });
+
+builder.Services.AddTransient<INotifier>(serviceProvider => serviceProvider.GetRequiredService<DiscordWebhookNotifier>());
 
 builder.Services.AddHostedService<IngestionWorker>();
 builder.Services.AddOpenApi();

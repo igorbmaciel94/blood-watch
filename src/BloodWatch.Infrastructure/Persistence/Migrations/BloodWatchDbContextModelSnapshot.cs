@@ -83,6 +83,10 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
                 .ValueGeneratedOnAdd()
                 .HasColumnType("uuid");
 
+            b.Property<int>("AttemptCount")
+                .HasColumnType("integer")
+                .HasColumnName("attempt_count");
+
             b.Property<DateTime>("CreatedAtUtc")
                 .HasColumnType("timestamp with time zone")
                 .HasColumnName("created_at_utc");
@@ -114,6 +118,9 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
 
             b.HasIndex("EventId", "Status");
 
+            b.HasIndex("EventId", "SubscriptionId")
+                .IsUnique();
+
             b.ToTable("deliveries", (string)null);
         });
 
@@ -131,6 +138,11 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
                 .IsRequired()
                 .HasColumnType("text")
                 .HasColumnName("metric_key");
+
+            b.Property<string>("IdempotencyKey")
+                .IsRequired()
+                .HasColumnType("text")
+                .HasColumnName("idempotency_key");
 
             b.Property<string>("PayloadJson")
                 .IsRequired()
@@ -159,6 +171,9 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
             b.HasIndex("RegionId");
 
             b.HasIndex("CurrentReserveId");
+
+            b.HasIndex("IdempotencyKey")
+                .IsUnique();
 
             b.HasIndex("SourceId", "CreatedAtUtc");
 
@@ -257,7 +272,13 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
                 .HasColumnType("boolean")
                 .HasColumnName("is_enabled");
 
+            b.Property<string>("MetricFilter")
+                .IsRequired()
+                .HasColumnType("text")
+                .HasColumnName("metric_filter");
+
             b.Property<string>("RegionFilter")
+                .IsRequired()
                 .HasColumnType("text")
                 .HasColumnName("region_filter");
 
@@ -279,7 +300,48 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
 
             b.HasIndex("SourceId", "IsEnabled");
 
+            b.HasIndex("SourceId", "RegionFilter", "MetricFilter", "IsEnabled");
+
             b.ToTable("subscriptions", (string)null);
+        });
+
+        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SubscriptionNotificationStateEntity", b =>
+        {
+            b.Property<Guid>("SubscriptionId")
+                .HasColumnType("uuid")
+                .HasColumnName("subscription_id");
+
+            b.Property<bool>("IsLowOpen")
+                .HasColumnType("boolean")
+                .HasColumnName("is_low_open")
+                .HasDefaultValue(false);
+
+            b.Property<DateTime?>("LastLowNotifiedAtUtc")
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("last_low_notified_at_utc");
+
+            b.Property<int?>("LastLowNotifiedBucket")
+                .HasColumnType("integer")
+                .HasColumnName("last_low_notified_bucket");
+
+            b.Property<decimal?>("LastLowNotifiedUnits")
+                .HasPrecision(12, 2)
+                .HasColumnType("numeric(12,2)")
+                .HasColumnName("last_low_notified_units");
+
+            b.Property<DateTime?>("LastRecoveryNotifiedAtUtc")
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("last_recovery_notified_at_utc");
+
+            b.Property<DateTime>("UpdatedAtUtc")
+                .HasColumnType("timestamp with time zone")
+                .HasColumnName("updated_at_utc");
+
+            b.HasKey("SubscriptionId");
+
+            b.HasIndex("UpdatedAtUtc");
+
+            b.ToTable("subscription_notification_states", (string)null);
         });
 
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.DeliveryEntity", b =>
@@ -368,6 +430,17 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
             b.Navigation("Source");
         });
 
+        modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SubscriptionNotificationStateEntity", b =>
+        {
+            b.HasOne("BloodWatch.Infrastructure.Persistence.Entities.SubscriptionEntity", "Subscription")
+                .WithOne("NotificationState")
+                .HasForeignKey("BloodWatch.Infrastructure.Persistence.Entities.SubscriptionNotificationStateEntity", "SubscriptionId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+
+            b.Navigation("Subscription");
+        });
+
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.EventEntity", b =>
         {
             b.Navigation("Deliveries");
@@ -394,6 +467,8 @@ partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
         modelBuilder.Entity("BloodWatch.Infrastructure.Persistence.Entities.SubscriptionEntity", b =>
         {
             b.Navigation("Deliveries");
+
+            b.Navigation("NotificationState");
         });
 #pragma warning restore 612, 618
     }

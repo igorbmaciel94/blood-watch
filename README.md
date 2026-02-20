@@ -33,6 +33,11 @@ docker compose up --build
   - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte)
   - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&metric=overall](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&metric=overall)
   - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall)
+- Subscriptions (require `X-API-Key`):
+  - `POST /api/v1/subscriptions`
+  - `GET /api/v1/subscriptions`
+  - `GET /api/v1/subscriptions/{id}`
+  - `DELETE /api/v1/subscriptions/{id}`
 
 ### 3) Verify Worker Health
 
@@ -75,3 +80,13 @@ docs/
 - Architecture: `docs/architecture.md`
 - Adapter guide: `docs/adapter-howto.md`
 - Portugal data source: `docs/data-sources/portugal-reservas.md`
+
+## Alert behavior (M2)
+
+- Alerts are evaluated against latest reserves every worker cycle.
+- Notifications are scoped by exact subscription match: `source + region + metric`.
+- Critical policy:
+  - Send immediately when a scope is critical.
+  - While still critical, send a reminder every 24 hours.
+  - Send immediately again when critical bucket worsens.
+  - Send recovery notification when stock exits critical.

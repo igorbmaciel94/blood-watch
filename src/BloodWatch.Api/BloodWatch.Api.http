@@ -1,4 +1,5 @@
 @BloodWatch.Api_HostAddress = http://localhost:0
+@BloodWatch.Api_WriteApiKey = replace-me
 
 GET {{BloodWatch.Api_HostAddress}}/health
 Accept: application/json
@@ -32,5 +33,36 @@ Accept: application/json
 
 GET {{BloodWatch.Api_HostAddress}}/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall
 Accept: application/json
+
+###
+
+POST {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions
+Content-Type: application/json
+X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+
+{
+  "source": "pt-transparencia-sns",
+  "type": "discord-webhook",
+  "target": "https://discord.com/api/webhooks/123/token",
+  "region": "pt-norte",
+  "metric": "overall"
+}
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions/00000000-0000-0000-0000-000000000000
+Accept: application/json
+X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions
+Accept: application/json
+X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+
+###
+
+DELETE {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions/00000000-0000-0000-0000-000000000000
+X-API-Key: {{BloodWatch.Api_WriteApiKey}}
 
 ###
