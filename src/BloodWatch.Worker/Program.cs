@@ -3,7 +3,6 @@ using BloodWatch.Core.Contracts;
 using BloodWatch.Infrastructure;
 using BloodWatch.Infrastructure.Persistence;
 using BloodWatch.Worker;
-using BloodWatch.Worker.Alerts;
 using BloodWatch.Worker.Dispatch;
 using BloodWatch.Worker.Notifiers;
 using BloodWatch.Worker.Rules;
@@ -16,11 +15,8 @@ builder.Services
     .AddPortugalAdapter();
 
 builder.Services
-    .Configure<AlertThresholdOptions>(builder.Configuration.GetSection(AlertThresholdOptions.SectionName))
     .Configure<FetchPortugalReservesOptions>(builder.Configuration.GetSection(FetchPortugalReservesOptions.SectionName))
-    .AddSingleton<CompatibilityPriorityService>()
-    .AddSingleton<AlertThresholdProfileResolver>()
-    .AddSingleton<IRule, LowStockThresholdRule>()
+    .AddSingleton<IRule, StatusTransitionRule>()
     .AddScoped<DispatchEngine>()
     .AddScoped<FetchPortugalReservesJob>();
 

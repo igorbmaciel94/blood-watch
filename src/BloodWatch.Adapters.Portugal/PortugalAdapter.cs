@@ -5,23 +5,26 @@ using Microsoft.Extensions.Logging;
 namespace BloodWatch.Adapters.Portugal;
 
 public sealed class PortugalAdapter(
-    ITransparenciaSnsClient client,
+    IDadorPtClient client,
     PortugalReservasMapper mapper,
     ILogger<PortugalAdapter> logger) : IDataSourceAdapter
 {
-    public const string DefaultAdapterKey = "pt-transparencia-sns";
+    public const string DefaultAdapterKey = "pt-dador-ipst";
+    public const string DefaultSourceName = "Portugal Dador/IPST";
 
-    private readonly ITransparenciaSnsClient _client = client;
+    private readonly IDadorPtClient _client = client;
     private readonly PortugalReservasMapper _mapper = mapper;
     private readonly ILogger<PortugalAdapter> _logger = logger;
 
     private static readonly IReadOnlyCollection<RegionRef> Regions =
     [
-        new("pt-norte", "Regiao de Saude Norte"),
-        new("pt-centro", "Regiao de Saude Centro"),
-        new("pt-lvt", "Regiao de Saude LVT"),
-        new("pt-alentejo", "Regiao de Saude Alentejo"),
-        new("pt-algarve", "Regiao de Saude Algarve"),
+        new("pt-ipst", "IPST"),
+        new("pt-nacional", "Nacional"),
+        new("pt-norte", "Norte"),
+        new("pt-centro", "Centro"),
+        new("pt-lisboa-setubal", "Lisboa e Setubal"),
+        new("pt-alentejo", "Alentejo"),
+        new("pt-algarve", "Algarve"),
     ];
 
     public string AdapterKey => DefaultAdapterKey;
@@ -33,15 +36,13 @@ public sealed class PortugalAdapter(
 
     public async Task<Snapshot> FetchLatestAsync(CancellationToken cancellationToken = default)
     {
-        using var payload = await _client.GetReservasPayloadAsync(cancellationToken);
+        using var payload = await _client.GetBloodReservesPayloadAsync(cancellationToken);
 
-        var capturedAtUtc = DateTime.UtcNow;
-        var snapshot = _mapper.Map(payload.RootElement, capturedAtUtc);
-
+        var snapshot = _mapper.Map(payload.RootElement, DateTime.UtcNow);
         if (snapshot.Items.Count == 0)
         {
             _logger.LogWarning(
-                "Portugal adapter fetched payload but mapped zero items. ReferenceDate: {ReferenceDate}.",
+                "Portugal adapter fetched dador.pt payload but mapped zero items. ReferenceDate: {ReferenceDate}.",
                 snapshot.ReferenceDate);
         }
 

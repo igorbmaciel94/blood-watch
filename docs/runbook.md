@@ -5,8 +5,9 @@
 ```bash
 docker compose up -d
 ```
-2) Open Swagger:
-- `http://localhost:8080/swagger` (or your configured port)
+
+2) Open API docs:
+- `http://localhost:8080/docs`
 
 3) Check worker logs:
 ```bash
@@ -15,27 +16,31 @@ docker compose logs -f worker
 
 ## Troubleshooting
 - If Postgres is not ready, wait for healthcheck to turn green.
-- If ingestion fails due to schema changes, check adapter logs and update mapping.
+- If ingestion fails, check worker logs for dador endpoint failures or mapping errors.
+- If alerts are not emitted, verify subscription scope/filter values (`source`, `scopeType`, `region`/`institutionId`, `metric`) and notifier delivery errors.
 
 ## Common env vars
 - `ConnectionStrings__BloodWatch`
 - `BloodWatch__Worker__FetchPortugalReserves__IntervalMinutes`
-- `BloodWatch__Alerts__BaseCriticalUnits`
-- `BloodWatch__Alerts__WarningMultiplier`
-- `BloodWatch__Alerts__CriticalStepDownPercent`
-- `BloodWatch__Alerts__ReminderIntervalHours` (default `24`)
-- `BloodWatch__Alerts__WorseningBucketDelta` (default `1`)
-- `BloodWatch__Alerts__SendRecoveryNotification` (default `true`)
-- `BloodWatch__Portugal__TransparenciaSns__TimeoutSeconds`
-- `BloodWatch__Portugal__TransparenciaSns__MaxRetries`
-- `BloodWatch__Portugal__TransparenciaSns__UserAgent`
-- `BLOODWATCH__API_KEY` (for write endpoints)
+- `BloodWatch__Worker__FetchPortugalReserves__ReminderIntervalHours`
+- `BloodWatch__Portugal__Dador__BaseUrl`
+- `BloodWatch__Portugal__Dador__BloodReservesPath`
+- `BloodWatch__Portugal__Dador__InstitutionsPath`
+- `BloodWatch__Portugal__Dador__SessionsPath`
+- `BloodWatch__Portugal__Dador__TimeoutSeconds`
+- `BloodWatch__Portugal__Dador__MaxRetries`
+- `BloodWatch__Portugal__Dador__UserAgent`
+- `BLOODWATCH__API_KEY` (for subscription endpoints)
 - `BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS`
 
 ## Notification policy
-- Subscriptions are evaluated by exact `source + region + metric`.
-- Critical notifications are rate-limited:
-  - first critical alert immediately
-  - daily reminder while still critical
-  - immediate alert when critical bucket worsens
-  - optional recovery notification on exit from critical
+- Subscriptions are evaluated by exact `source + scopeType`.
+- `metric` filter modes:
+  - explicit metric key: matches only that key
+  - wildcard metric (`null` in API, stored as `*`): matches all metric keys within the selected scope
+- Status transition rule emits events when:
+  - status enters non-normal
+  - status worsens
+  - status recovers to normal
+- Worker also emits non-normal status presence events every cycle so new matching subscriptions get an initial alert even without a new transition.
+- Wildcard subscriptions emit one delivery per matched metric event (no grouped notification payload).

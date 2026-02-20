@@ -8,95 +8,85 @@ public sealed class PortugalReservasMapperTests
     private readonly PortugalReservasMapper _mapper = new();
 
     [Fact]
-    public void Map_ShouldConvertSamplePayloadToCanonicalSnapshot()
+    public void Map_ShouldParseDadorStructureIncludingRegionalBlocks()
     {
         const string json = """
         {
-          "results": [
-            {
-              "periodo": "2026-01",
-              "regiao": "Regiao de Saude Norte",
-              "grupo_sanguineo": "Total",
-              "reservas": 100
+          "success": true,
+          "data": {
+            "ReservasSangue": {
+              "Data": [["16/02/2026"]],
+              "IPST": [
+                {"ABO":"A +","Cor":"VERDE"},
+                {"ABO":"O -","Cor":"LARANJA"}
+              ],
+              "NACIONAL": [
+                {"ABO":"A +","Cor":"VERMELHO"}
+              ],
+              "Regiao": [
+                ["NORTE"],
+                {"ABO":"A +","Cor":"AMARELO"},
+                {"ABO":"O -","Cor":"LARANJA"},
+                ["ALGARVE"],
+                {"ABO":"O -","Cor":"VERDE"}
+              ]
             },
-            {
-              "periodo": "2026-01",
-              "regiao": "Regiao de Saude Norte",
-              "grupo_sanguineo": "A+",
-              "reservas": "25,5"
-            },
-            {
-              "periodo": "2025-12",
-              "regiao": "Regiao de Saude LVT",
-              "grupo_sanguineo": "Total",
-              "reservas": 999
-            }
-          ]
+            "version": "16/02/2026 11:00"
+          }
         }
         """;
 
         using var document = JsonDocument.Parse(json);
-        var snapshot = _mapper.Map(document.RootElement, new DateTime(2026, 2, 17, 12, 0, 0, DateTimeKind.Utc));
+        var snapshot = _mapper.Map(document.RootElement, new DateTime(2026, 2, 20, 12, 0, 0, DateTimeKind.Utc));
 
-        Assert.Equal("pt-transparencia-sns", snapshot.Source.AdapterKey);
-        Assert.Equal(new DateOnly(2026, 1, 1), snapshot.ReferenceDate);
-        Assert.Equal(2, snapshot.Items.Count);
+        Assert.Equal("pt-dador-ipst", snapshot.Source.AdapterKey);
+        Assert.Equal(new DateOnly(2026, 2, 16), snapshot.ReferenceDate);
+        Assert.Equal(new DateTime(2026, 2, 16, 11, 0, 0, DateTimeKind.Utc), snapshot.SourceUpdatedAtUtc);
 
         Assert.Contains(snapshot.Items, item =>
-            item.Region.Key == "pt-norte"
-            && item.Metric.Key == "overall"
-            && item.Value == 100m);
+            item.Region.Key == "pt-ipst"
+            && item.Metric.Key == "blood-group-o-minus"
+            && item.StatusKey == "warning");
+
+        Assert.Contains(snapshot.Items, item =>
+            item.Region.Key == "pt-nacional"
+            && item.Metric.Key == "blood-group-a-plus"
+            && item.StatusKey == "critical");
 
         Assert.Contains(snapshot.Items, item =>
             item.Region.Key == "pt-norte"
             && item.Metric.Key == "blood-group-a-plus"
-            && item.Value == 25.5m);
+            && item.StatusKey == "watch");
+
+        Assert.Contains(snapshot.Items, item =>
+            item.Region.Key == "pt-algarve"
+            && item.Metric.Key == "blood-group-o-minus"
+            && item.StatusKey == "normal");
     }
 
     [Fact]
-    public void Map_ShouldTolerateUnknownFieldsAndNulls()
+    public void Map_ShouldMapUnknownColorToUnknownStatus()
     {
         const string json = """
-        [
-          {
-            "fields": {
-              "periodo": "2026-02",
-              "regiao": "Regiao de Saude do Algarve",
-              "grupo_sanguineo": "Total",
-              "reservas": "321,7",
-              "extra_field": "ignored"
+        {
+          "success": true,
+          "data": {
+            "ReservasSangue": {
+              "Data": [["16/02/2026"]],
+              "IPST": [
+                {"ABO":"A +","Cor":"AZUL"}
+              ]
             },
-            "something_new": {
-              "nested": true
-            }
-          },
-          {
-            "fields": {
-              "periodo": "2026-02",
-              "regiao": "Regiao de Saude do Algarve",
-              "grupo_sanguineo": "Total",
-              "reservas": null
-            }
-          },
-          {
-            "fields": {
-              "periodo": "2026-01",
-              "regiao": "Regiao de Saude do Algarve",
-              "grupo_sanguineo": "Total",
-              "reservas": 200
-            }
+            "version": "16/02/2026 11:00"
           }
-        ]
+        }
         """;
 
         using var document = JsonDocument.Parse(json);
-        var snapshot = _mapper.Map(document.RootElement, new DateTime(2026, 2, 17, 12, 0, 0, DateTimeKind.Utc));
-
-        Assert.Equal(new DateOnly(2026, 2, 1), snapshot.ReferenceDate);
+        var snapshot = _mapper.Map(document.RootElement, new DateTime(2026, 2, 20, 12, 0, 0, DateTimeKind.Utc));
 
         var item = Assert.Single(snapshot.Items);
-        Assert.Equal("pt-algarve", item.Region.Key);
-        Assert.Equal("overall", item.Metric.Key);
-        Assert.Equal(321.7m, item.Value);
+        Assert.Equal("unknown", item.StatusKey);
+        Assert.Equal("Unknown", item.StatusLabel);
     }
 }
