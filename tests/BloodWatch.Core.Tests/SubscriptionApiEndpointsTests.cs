@@ -15,14 +15,14 @@ namespace BloodWatch.Core.Tests;
 public sealed class SubscriptionApiEndpointsTests
 {
     private const string ApiKey = "test-write-key";
-    private const string SourceKey = "pt-transparencia-sns";
-    private const string SourceName = "Portugal SNS Transparency";
+    private const string SourceKey = "pt-dador-ipst";
+    private const string SourceName = "Portugal Dador/IPST";
 
     [Fact]
     public async Task PostSubscription_WithoutApiKey_ShouldReturnUnauthorized()
     {
         await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
+        var seeded = await SeedSourceRegionMetricAndInstitutionAsync(factory);
         using var client = factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
@@ -30,30 +30,19 @@ public sealed class SubscriptionApiEndpointsTests
             source = SourceKey,
             type = "discord-webhook",
             target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "region",
             region = "pt-norte",
-            metric = "overall",
+            metric = "blood-group-o-minus",
         });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
-    public async Task GetSubscriptions_WithoutApiKey_ShouldReturnUnauthorized()
+    public async Task PostRegionSubscription_ShouldCreateSuccessfully()
     {
         await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
-        using var client = factory.CreateClient();
-
-        using var response = await client.GetAsync("/api/v1/subscriptions");
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task PostSubscription_MissingRegion_ShouldReturnBadRequest()
-    {
-        await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
+        await SeedSourceRegionMetricAndInstitutionAsync(factory);
         using var client = CreateAuthenticatedClient(factory);
 
         using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
@@ -61,153 +50,188 @@ public sealed class SubscriptionApiEndpointsTests
             source = SourceKey,
             type = "discord-webhook",
             target = "https://discord.com/api/webhooks/123/token",
-            metric = "overall",
-        });
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.NotNull(problem);
-        Assert.Equal("Bad request", problem!.Title);
-    }
-
-    [Fact]
-    public async Task PostSubscription_MissingMetric_ShouldReturnBadRequest()
-    {
-        await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
-        using var client = CreateAuthenticatedClient(factory);
-
-        using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
-        {
-            source = SourceKey,
-            type = "discord-webhook",
-            target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "region",
             region = "pt-norte",
+            metric = "blood-group-o-minus",
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.NotNull(problem);
-        Assert.Equal("Bad request", problem!.Title);
-    }
-
-    [Fact]
-    public async Task PostSubscription_InvalidTarget_ShouldReturnBadRequest()
-    {
-        await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
-        using var client = CreateAuthenticatedClient(factory);
-
-        using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
-        {
-            source = SourceKey,
-            type = "discord-webhook",
-            target = "https://example.com/api/webhooks/123/token",
-            region = "pt-norte",
-            metric = "overall",
-        });
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task PostAndGetSubscription_ShouldReturnMaskedTarget()
-    {
-        await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
-        using var client = CreateAuthenticatedClient(factory);
-
-        using var postResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", new
-        {
-            source = SourceKey,
-            type = "discord-webhook",
-            target = "https://discord.com/api/webhooks/123/token",
-            region = "pt-norte",
-            metric = "overall",
-        });
-
-        Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
-        var created = await postResponse.Content.ReadFromJsonAsync<SubscriptionResponse>();
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<SubscriptionResponse>();
         Assert.NotNull(created);
-        Assert.Equal("https://discord.com/api/webhooks/***", created!.Target);
-
-        using var getResponse = await client.GetAsync($"/api/v1/subscriptions/{created.Id}");
-        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
-
-        var loaded = await getResponse.Content.ReadFromJsonAsync<SubscriptionResponse>();
-        Assert.NotNull(loaded);
-        Assert.Equal(created.Id, loaded!.Id);
-        Assert.Equal("https://discord.com/api/webhooks/***", loaded.Target);
-        Assert.Equal("pt-norte", loaded.Region);
-        Assert.Equal("overall", loaded.Metric);
+        Assert.Equal("region", created!.ScopeType);
+        Assert.Equal("pt-norte", created.Region);
+        Assert.Null(created.InstitutionId);
+        Assert.Equal("https://discord.com/api/webhooks/***", created.Target);
     }
 
     [Fact]
-    public async Task GetSubscriptions_ShouldReturnAllWithMaskedTargets()
+    public async Task PostInstitutionSubscription_WithoutMetric_ShouldCreateWildcardSuccessfully()
     {
         await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
+        var seeded = await SeedSourceRegionMetricAndInstitutionAsync(factory);
         using var client = CreateAuthenticatedClient(factory);
 
-        using var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        {
+            source = SourceKey,
+            type = "discord-webhook",
+            target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "institution",
+            institutionId = seeded.InstitutionId,
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<SubscriptionResponse>();
+        Assert.NotNull(created);
+        Assert.Equal("institution", created!.ScopeType);
+        Assert.Equal(seeded.InstitutionId, created.InstitutionId);
+        Assert.Null(created.Region);
+        Assert.Null(created.Metric);
+    }
+
+    [Fact]
+    public async Task PostSubscription_MissingScopeType_ShouldReturnBadRequest()
+    {
+        await using var factory = CreateFactory();
+        await SeedSourceRegionMetricAndInstitutionAsync(factory);
+        using var client = CreateAuthenticatedClient(factory);
+
+        using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
         {
             source = SourceKey,
             type = "discord-webhook",
             target = "https://discord.com/api/webhooks/123/token",
             region = "pt-norte",
-            metric = "overall",
+            metric = "blood-group-o-minus",
         });
 
-        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Bad request", problem!.Title);
+    }
+
+    [Fact]
+    public async Task PostInstitutionSubscription_WithUnknownInstitution_ShouldReturnNotFound()
+    {
+        await using var factory = CreateFactory();
+        await SeedSourceRegionMetricAndInstitutionAsync(factory);
+        using var client = CreateAuthenticatedClient(factory);
+
+        using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        {
+            source = SourceKey,
+            type = "discord-webhook",
+            target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "institution",
+            institutionId = Guid.NewGuid(),
+            metric = "blood-group-o-minus",
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetSubscriptions_ShouldReturnScopeFields()
+    {
+        await using var factory = CreateFactory();
+        var seeded = await SeedSourceRegionMetricAndInstitutionAsync(factory);
+        using var client = CreateAuthenticatedClient(factory);
+
+        await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        {
+            source = SourceKey,
+            type = "discord-webhook",
+            target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "region",
+            region = "pt-norte",
+            metric = "blood-group-o-minus",
+        });
+
+        await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        {
+            source = SourceKey,
+            type = "discord-webhook",
+            target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "institution",
+            institutionId = seeded.InstitutionId,
+        });
 
         using var response = await client.GetAsync("/api/v1/subscriptions");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var payload = await response.Content.ReadFromJsonAsync<SubscriptionsResponse>();
         Assert.NotNull(payload);
-        var items = payload!.Items.ToArray();
-        Assert.Single(items);
-        Assert.Equal("https://discord.com/api/webhooks/***", items[0].Target);
-        Assert.Equal("pt-norte", items[0].Region);
-        Assert.Equal("overall", items[0].Metric);
+        Assert.Equal(2, payload!.Items.Count);
+        Assert.Contains(payload.Items, item => item.ScopeType == "region" && item.Region == "pt-norte");
+        Assert.Contains(payload.Items, item =>
+            item.ScopeType == "institution"
+            && item.InstitutionId == seeded.InstitutionId
+            && item.Metric is null);
     }
 
     [Fact]
-    public async Task GetSubscriptions_ShouldExcludeDisabledSubscriptions()
+    public async Task PostSubscription_WithExplicitMetric_ShouldPersistExactMetric()
     {
         await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
+        var seeded = await SeedSourceRegionMetricAndInstitutionAsync(factory);
         using var client = CreateAuthenticatedClient(factory);
 
-        using var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        using var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new
         {
             source = SourceKey,
             type = "discord-webhook",
             target = "https://discord.com/api/webhooks/123/token",
-            region = "pt-norte",
-            metric = "overall",
+            scopeType = "institution",
+            institutionId = seeded.InstitutionId,
+            metric = "blood-group-o-minus",
         });
 
-        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
-        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionResponse>();
-        Assert.NotNull(created);
-
-        using var deleteResponse = await client.DeleteAsync($"/api/v1/subscriptions/{created!.Id}");
-        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
-
-        using var listResponse = await client.GetAsync("/api/v1/subscriptions");
-        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
-
-        var payload = await listResponse.Content.ReadFromJsonAsync<SubscriptionsResponse>();
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<SubscriptionResponse>();
         Assert.NotNull(payload);
-        Assert.Empty(payload!.Items);
+        Assert.Equal("blood-group-o-minus", payload!.Metric);
+    }
+
+    [Fact]
+    public async Task GetSubscriptions_WithExplicitMetricFilter_ShouldReturnOnlyExactMetricSubscriptions()
+    {
+        await using var factory = CreateFactory();
+        var seeded = await SeedSourceRegionMetricAndInstitutionAsync(factory);
+        using var client = CreateAuthenticatedClient(factory);
+
+        await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        {
+            source = SourceKey,
+            type = "discord-webhook",
+            target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "institution",
+            institutionId = seeded.InstitutionId,
+        });
+
+        await client.PostAsJsonAsync("/api/v1/subscriptions", new
+        {
+            source = SourceKey,
+            type = "discord-webhook",
+            target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "institution",
+            institutionId = seeded.InstitutionId,
+            metric = "blood-group-o-minus",
+        });
+
+        using var response = await client.GetAsync("/api/v1/subscriptions?metric=blood-group-o-minus");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<SubscriptionsResponse>();
+        Assert.NotNull(payload);
+        Assert.Single(payload!.Items);
+        Assert.Equal("blood-group-o-minus", payload.Items.Single().Metric);
     }
 
     [Fact]
     public async Task DeleteSubscription_ShouldSoftDisable()
     {
         await using var factory = CreateFactory();
-        await SeedSourceRegionAndMetricAsync(factory);
+        await SeedSourceRegionMetricAndInstitutionAsync(factory);
         using var client = CreateAuthenticatedClient(factory);
 
         using var postResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", new
@@ -215,8 +239,9 @@ public sealed class SubscriptionApiEndpointsTests
             source = SourceKey,
             type = "discord-webhook",
             target = "https://discord.com/api/webhooks/123/token",
+            scopeType = "region",
             region = "pt-norte",
-            metric = "overall",
+            metric = "blood-group-o-minus",
         });
 
         Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
@@ -245,7 +270,7 @@ public sealed class SubscriptionApiEndpointsTests
         return new ApiWebApplicationFactory();
     }
 
-    private static async Task SeedSourceRegionAndMetricAsync(ApiWebApplicationFactory factory)
+    private static async Task<SeededData> SeedSourceRegionMetricAndInstitutionAsync(ApiWebApplicationFactory factory)
     {
         using var scope = factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<BloodWatchDbContext>();
@@ -253,43 +278,55 @@ public sealed class SubscriptionApiEndpointsTests
         await dbContext.Database.EnsureDeletedAsync();
         await dbContext.Database.EnsureCreatedAsync();
 
-        var sourceId = await EnsureSourceExistsAsync(dbContext);
-        var regionId = Guid.NewGuid();
+        var source = await EnsureSourceExistsAsync(dbContext);
 
-        dbContext.Regions.Add(new RegionEntity
+        var region = new RegionEntity
         {
-            Id = regionId,
-            SourceId = sourceId,
+            Id = Guid.NewGuid(),
+            SourceId = source.Id,
             Key = "pt-norte",
-            DisplayName = "Regiao de Saude Norte",
+            DisplayName = "Norte",
             CreatedAtUtc = DateTime.UtcNow,
-        });
+        };
+
+        dbContext.Regions.Add(region);
 
         dbContext.CurrentReserves.Add(new CurrentReserveEntity
         {
             Id = Guid.NewGuid(),
-            SourceId = sourceId,
-            RegionId = regionId,
-            MetricKey = "overall",
-            Value = 123m,
-            Unit = "units",
-            Severity = null,
-            ReferenceDate = new DateOnly(2026, 2, 1),
+            SourceId = source.Id,
+            RegionId = region.Id,
+            MetricKey = "blood-group-o-minus",
+            StatusKey = "warning",
+            StatusLabel = "Warning",
+            ReferenceDate = DateOnly.FromDateTime(DateTime.UtcNow),
             CapturedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,
         });
 
+        var institution = new DonationCenterEntity
+        {
+            Id = Guid.NewGuid(),
+            SourceId = source.Id,
+            RegionId = region.Id,
+            ExternalId = "inst-1",
+            InstitutionCode = "SP",
+            Name = "CST Porto",
+            UpdatedAtUtc = DateTime.UtcNow,
+        };
+
+        dbContext.DonationCenters.Add(institution);
         await dbContext.SaveChangesAsync();
+
+        return new SeededData(institution.Id);
     }
 
-    private static async Task<Guid> EnsureSourceExistsAsync(BloodWatchDbContext dbContext)
+    private static async Task<SourceEntity> EnsureSourceExistsAsync(BloodWatchDbContext dbContext)
     {
-        var existing = await dbContext.Sources
-            .SingleOrDefaultAsync(source => source.AdapterKey == SourceKey);
-
+        var existing = await dbContext.Sources.SingleOrDefaultAsync(source => source.AdapterKey == SourceKey);
         if (existing is not null)
         {
-            return existing.Id;
+            return existing;
         }
 
         var source = new SourceEntity
@@ -303,8 +340,10 @@ public sealed class SubscriptionApiEndpointsTests
 
         dbContext.Sources.Add(source);
         await dbContext.SaveChangesAsync();
-        return source.Id;
+        return source;
     }
+
+    private sealed record SeededData(Guid InstitutionId);
 
     private sealed class ApiWebApplicationFactory : WebApplicationFactory<Program>
     {

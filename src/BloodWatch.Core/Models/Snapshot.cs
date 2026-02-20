@@ -4,4 +4,5 @@ public sealed record Snapshot(
     SourceRef Source,
     DateTime CapturedAtUtc,
     DateOnly? ReferenceDate,
-    IReadOnlyCollection<SnapshotItem> Items);
+    IReadOnlyCollection<SnapshotItem> Items,
+    DateTime? SourceUpdatedAtUtc = null);

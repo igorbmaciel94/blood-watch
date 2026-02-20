@@ -1,0 +1,40 @@
+namespace BloodWatch.Adapters.Portugal;
+
+public sealed record DadorInstitutionRecord(
+    string ExternalId,
+    string InstitutionCode,
+    string Name,
+    string RegionKey,
+    string RegionName,
+    string? DistrictCode,
+    string? DistrictName,
+    string? MunicipalityCode,
+    string? MunicipalityName,
+    string? Address,
+    decimal? Latitude,
+    decimal? Longitude,
+    string? PlusCode,
+    string? Schedule,
+    string? Phone,
+    string? MobilePhone,
+    string? Email);
+
+public sealed record DadorSessionRecord(
+    string ExternalId,
+    string InstitutionCode,
+    string InstitutionName,
+    string RegionKey,
+    string RegionName,
+    string? DistrictCode,
+    string? DistrictName,
+    string? MunicipalityCode,
+    string? MunicipalityName,
+    string? Location,
+    decimal? Latitude,
+    decimal? Longitude,
+    DateOnly? SessionDate,
+    string? SessionHours,
+    string? AccessCode,
+    string? StateCode,
+    string? SessionTypeCode,
+    string? SessionTypeName);

@@ -3,6 +3,7 @@ namespace BloodWatch.Core.Models;
 public sealed record SnapshotItem(
     Metric Metric,
     RegionRef Region,
-    decimal Value,
-    string Unit,
-    string? Severity = null);
+    string StatusKey,
+    string StatusLabel,
+    decimal? Value = null,
+    string? Unit = null);

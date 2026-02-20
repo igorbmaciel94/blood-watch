@@ -9,12 +9,12 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddPortugalAdapter(this IServiceCollection services)
     {
         services
-            .AddOptions<TransparenciaSnsClientOptions>()
-            .BindConfiguration(TransparenciaSnsClientOptions.SectionName);
+            .AddOptions<DadorPtClientOptions>()
+            .BindConfiguration(DadorPtClientOptions.SectionName);
 
-        services.AddHttpClient<ITransparenciaSnsClient, TransparenciaSnsClient>((serviceProvider, httpClient) =>
+        services.AddHttpClient<IDadorPtClient, DadorPtClient>((serviceProvider, httpClient) =>
         {
-            var options = serviceProvider.GetRequiredService<IOptions<TransparenciaSnsClientOptions>>().Value;
+            var options = serviceProvider.GetRequiredService<IOptions<DadorPtClientOptions>>().Value;
             var userAgent = string.IsNullOrWhiteSpace(options.UserAgent)
                 ? "BloodWatch/0.1 (+https://github.com/igorbmaciel/blood-watch)"
                 : options.UserAgent;
@@ -26,6 +26,8 @@ public static class ApplicationServiceCollectionExtensions
         });
 
         services.AddSingleton<PortugalReservasMapper>();
+        services.AddSingleton<DadorInstitutionsMapper>();
+        services.AddSingleton<DadorSessionsMapper>();
         services.AddSingleton<IDataSourceAdapter, PortugalAdapter>();
 
         return services;

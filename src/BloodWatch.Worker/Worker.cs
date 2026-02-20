@@ -22,10 +22,12 @@ public sealed class IngestionWorker(
                 var result = await fetchPortugalReservesJob.ExecuteAsync(stoppingToken);
 
                 _logger.LogInformation(
-                    "FetchPortugalReserves completed. InsertedCurrentReserves: {InsertedCurrentReserves}; UpdatedCurrentReserves: {UpdatedCurrentReserves}; CarriedForwardCurrentReserves: {CarriedForwardCurrentReserves}; PolledAtUtc: {PolledAtUtc}.",
+                    "FetchPortugalReserves completed. InsertedCurrentReserves: {InsertedCurrentReserves}; UpdatedCurrentReserves: {UpdatedCurrentReserves}; CarriedForwardCurrentReserves: {CarriedForwardCurrentReserves}; UpsertedInstitutions: {UpsertedInstitutions}; UpsertedSessions: {UpsertedSessions}; PolledAtUtc: {PolledAtUtc}.",
                     result.InsertedCurrentReserves,
                     result.UpdatedCurrentReserves,
                     result.CarriedForwardCurrentReserves,
+                    result.UpsertedInstitutions,
+                    result.UpsertedSessions,
                     result.PolledAtUtc);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

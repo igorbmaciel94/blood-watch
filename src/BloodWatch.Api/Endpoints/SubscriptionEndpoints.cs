@@ -11,6 +11,9 @@ namespace BloodWatch.Api.Endpoints;
 public static class SubscriptionEndpoints
 {
     private const string DiscordWebhookType = "discord-webhook";
+    private const string ScopeTypeRegion = "region";
+    private const string ScopeTypeInstitution = "institution";
+    private const string WildcardMetricToken = "*";
 
     private static readonly Regex MetricKeyRegex = new(
         "^[a-z0-9]+(?:-[a-z0-9]+)*$",
@@ -35,7 +38,7 @@ public static class SubscriptionEndpoints
 
         group.MapPost(string.Empty, CreateSubscriptionAsync)
             .WithName("CreateSubscription")
-            .WithSummary("Create a region and metric scoped subscription.")
+            .WithSummary("Create a region- or institution-scoped subscription.")
             .Produces<SubscriptionResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -78,6 +81,7 @@ public static class SubscriptionEndpoints
         }
 
         var sourceKey = NormalizeRequired(query.Source);
+        var scopeType = NormalizeRequired(query.ScopeType);
         var regionKey = NormalizeRequired(query.Region);
         var metricKey = NormalizeRequired(query.Metric);
 
@@ -91,9 +95,19 @@ public static class SubscriptionEndpoints
             subscriptionsQuery = subscriptionsQuery.Where(entry => entry.Source.AdapterKey == sourceKey);
         }
 
+        if (scopeType is not null)
+        {
+            subscriptionsQuery = subscriptionsQuery.Where(entry => entry.ScopeType == scopeType);
+        }
+
         if (regionKey is not null)
         {
             subscriptionsQuery = subscriptionsQuery.Where(entry => entry.RegionFilter == regionKey);
+        }
+
+        if (query.InstitutionId.HasValue)
+        {
+            subscriptionsQuery = subscriptionsQuery.Where(entry => entry.InstitutionId == query.InstitutionId.Value);
         }
 
         if (metricKey is not null)
@@ -108,9 +122,11 @@ public static class SubscriptionEndpoints
                 entry.Id,
                 entry.Source.AdapterKey,
                 entry.TypeKey,
-                MaskTarget(entry.Target),
+                entry.ScopeType,
                 entry.RegionFilter,
-                entry.MetricFilter,
+                entry.InstitutionId,
+                ToApiMetric(entry.MetricFilter),
+                MaskTarget(entry.Target),
                 entry.IsEnabled,
                 entry.CreatedAtUtc,
                 entry.DisabledAtUtc))
@@ -148,21 +164,23 @@ public static class SubscriptionEndpoints
         {
             return CreateBadRequestProblem($"Field 'type' must be '{DiscordWebhookType}'.");
         }
-        typeKey = DiscordWebhookType;
 
-        var regionKey = NormalizeRequired(request.Region);
-        if (regionKey is null)
+        var scopeType = NormalizeRequired(request.ScopeType);
+        if (scopeType is null)
         {
-            return CreateBadRequestProblem("Field 'region' is required.");
+            return CreateBadRequestProblem("Field 'scopeType' is required.");
         }
+
+        if (!string.Equals(scopeType, ScopeTypeRegion, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(scopeType, ScopeTypeInstitution, StringComparison.OrdinalIgnoreCase))
+        {
+            return CreateBadRequestProblem($"Field 'scopeType' must be '{ScopeTypeRegion}' or '{ScopeTypeInstitution}'.");
+        }
+
+        scopeType = scopeType.ToLowerInvariant();
 
         var metricKey = NormalizeRequired(request.Metric);
-        if (metricKey is null)
-        {
-            return CreateBadRequestProblem("Field 'metric' is required.");
-        }
-
-        if (!MetricKeyRegex.IsMatch(metricKey))
+        if (metricKey is not null && !MetricKeyRegex.IsMatch(metricKey))
         {
             return CreateBadRequestProblem("Field 'metric' has an invalid format.");
         }
@@ -186,18 +204,57 @@ public static class SubscriptionEndpoints
             return CreateNotFoundProblem($"Source '{sourceKey}' was not found.");
         }
 
-        var regionExists = await dbContext.Regions
-            .AnyAsync(region => region.SourceId == source.Id && region.Key == regionKey, cancellationToken);
+        string? regionKey = null;
+        Guid? institutionId = null;
 
-        if (!regionExists)
+        if (scopeType == ScopeTypeRegion)
         {
-            return CreateNotFoundProblem($"Region '{regionKey}' was not found for source '{source.AdapterKey}'.");
+            regionKey = NormalizeRequired(request.Region);
+            if (regionKey is null)
+            {
+                return CreateBadRequestProblem("Field 'region' is required when scopeType is 'region'.");
+            }
+
+            if (request.InstitutionId.HasValue)
+            {
+                return CreateBadRequestProblem("Field 'institutionId' must be null when scopeType is 'region'.");
+            }
+
+            var regionExists = await dbContext.Regions
+                .AnyAsync(region => region.SourceId == source.Id && region.Key == regionKey, cancellationToken);
+
+            if (!regionExists)
+            {
+                return CreateNotFoundProblem($"Region '{regionKey}' was not found for source '{source.AdapterKey}'.");
+            }
+        }
+        else
+        {
+            if (!request.InstitutionId.HasValue)
+            {
+                return CreateBadRequestProblem("Field 'institutionId' is required when scopeType is 'institution'.");
+            }
+
+            if (NormalizeRequired(request.Region) is not null)
+            {
+                return CreateBadRequestProblem("Field 'region' must be null when scopeType is 'institution'.");
+            }
+
+            institutionId = request.InstitutionId.Value;
+
+            var institutionExists = await dbContext.DonationCenters
+                .AnyAsync(center => center.SourceId == source.Id && center.Id == institutionId.Value, cancellationToken);
+
+            if (!institutionExists)
+            {
+                return CreateNotFoundProblem($"Institution '{institutionId}' was not found for source '{source.AdapterKey}'.");
+            }
         }
 
         var hasAnyMetrics = await dbContext.CurrentReserves
             .AnyAsync(reserve => reserve.SourceId == source.Id, cancellationToken);
 
-        if (hasAnyMetrics)
+        if (hasAnyMetrics && metricKey is not null)
         {
             var metricExists = await dbContext.CurrentReserves
                 .AnyAsync(reserve => reserve.SourceId == source.Id && reserve.MetricKey == metricKey, cancellationToken);
@@ -208,14 +265,18 @@ public static class SubscriptionEndpoints
             }
         }
 
+        var storedMetricFilter = metricKey ?? WildcardMetricToken;
+
         var entity = new SubscriptionEntity
         {
             Id = Guid.NewGuid(),
             SourceId = source.Id,
-            TypeKey = typeKey,
+            TypeKey = DiscordWebhookType,
             Target = target,
+            ScopeType = scopeType,
             RegionFilter = regionKey,
-            MetricFilter = metricKey,
+            InstitutionId = institutionId,
+            MetricFilter = storedMetricFilter,
             IsEnabled = true,
             CreatedAtUtc = DateTime.UtcNow,
             DisabledAtUtc = null,
@@ -230,9 +291,11 @@ public static class SubscriptionEndpoints
                 entity.Id,
                 source.AdapterKey,
                 entity.TypeKey,
-                MaskTarget(entity.Target),
+                entity.ScopeType,
                 entity.RegionFilter,
-                entity.MetricFilter,
+                entity.InstitutionId,
+                ToApiMetric(entity.MetricFilter),
+                MaskTarget(entity.Target),
                 entity.IsEnabled,
                 entity.CreatedAtUtc,
                 entity.DisabledAtUtc));
@@ -258,9 +321,11 @@ public static class SubscriptionEndpoints
                 entry.Id,
                 entry.Source.AdapterKey,
                 entry.TypeKey,
-                MaskTarget(entry.Target),
+                entry.ScopeType,
                 entry.RegionFilter,
-                entry.MetricFilter,
+                entry.InstitutionId,
+                ToApiMetric(entry.MetricFilter),
+                MaskTarget(entry.Target),
                 entry.IsEnabled,
                 entry.CreatedAtUtc,
                 entry.DisabledAtUtc))
@@ -378,6 +443,13 @@ public static class SubscriptionEndpoints
     private static string? NormalizeRequired(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? ToApiMetric(string metricFilter)
+    {
+        return string.Equals(metricFilter, WildcardMetricToken, StringComparison.Ordinal)
+            ? null
+            : metricFilter;
     }
 
     private static IResult CreateBadRequestProblem(string detail)

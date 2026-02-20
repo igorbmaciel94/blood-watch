@@ -19,14 +19,15 @@ public static class SnapshotHashCalculator
         foreach (var item in snapshot.Items
                      .OrderBy(entry => entry.Region.Key, StringComparer.Ordinal)
                      .ThenBy(entry => entry.Metric.Key, StringComparer.Ordinal)
-                     .ThenBy(entry => entry.Unit, StringComparer.Ordinal))
+                     .ThenBy(entry => entry.StatusKey, StringComparer.Ordinal))
         {
             builder
                 .Append(item.Region.Key).Append('|')
                 .Append(item.Metric.Key).Append('|')
-                .Append(item.Unit).Append('|')
-                .Append(item.Severity ?? string.Empty).Append('|')
-                .Append(item.Value.ToString("0.####################", CultureInfo.InvariantCulture))
+                .Append(item.StatusKey).Append('|')
+                .Append(item.StatusLabel).Append('|')
+                .Append(item.Unit ?? string.Empty).Append('|')
+                .Append(item.Value?.ToString("0.####################", CultureInfo.InvariantCulture) ?? string.Empty)
                 .Append(';');
         }
 

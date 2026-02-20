@@ -3,265 +3,168 @@ using BloodWatch.Core.Contracts;
 using BloodWatch.Core.Models;
 using BloodWatch.Infrastructure.Persistence;
 using BloodWatch.Infrastructure.Persistence.Entities;
-using BloodWatch.Worker.Alerts;
 using BloodWatch.Worker.Dispatch;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace BloodWatch.Core.Tests;
 
 public sealed class DispatchEngineTests
 {
     [Fact]
-    public async Task DispatchAsync_FirstCriticalAlert_ShouldSendAndOpenLowState()
+    public async Task DispatchAsync_RegionScopeSubscription_ShouldSendNotification()
     {
         await using var dbContext = CreateDbContext();
-        var seeded = await SeedDispatchScopeAsync(
-            dbContext,
-            payloadJson: BuildPayloadJson(
-                signal: "critical-active",
-                transitionKind: "entered-critical",
-                currentState: "critical",
-                currentBucket: 0,
-                currentUnits: 90m,
-                criticalUnits: 100m));
+        var seeded = await SeedDispatchScopeAsync(dbContext, addInstitutionSubscription: false);
 
         var notifier = new SequenceNotifier(DeliveryStatus.Sent);
         var engine = CreateEngine(dbContext, notifier);
 
-        await engine.DispatchAsync([seeded.Event]);
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
         await dbContext.SaveChangesAsync();
+
+        Assert.Equal(1, sentCount);
+        Assert.Equal(1, notifier.CallCount);
 
         var delivery = await dbContext.Deliveries.SingleAsync();
         Assert.Equal("sent", delivery.Status);
         Assert.Equal(1, delivery.AttemptCount);
-
-        var state = await dbContext.SubscriptionNotificationStates.SingleAsync();
-        Assert.True(state.IsLowOpen);
-        Assert.Equal(0, state.LastLowNotifiedBucket);
-        Assert.Equal(90m, state.LastLowNotifiedUnits);
-        Assert.NotNull(state.LastLowNotifiedAtUtc);
     }
 
     [Fact]
-    public async Task DispatchAsync_WhenAlreadyLowAndReminderNotDue_ShouldSuppressNotification()
+    public async Task DispatchAsync_InstitutionScopeSubscription_ShouldSendWhenInstitutionRegionMatchesEventRegion()
+    {
+        await using var dbContext = CreateDbContext();
+        var seeded = await SeedDispatchScopeAsync(dbContext, addInstitutionSubscription: true);
+
+        var notifier = new SequenceNotifier(DeliveryStatus.Sent, DeliveryStatus.Sent);
+        var engine = CreateEngine(dbContext, notifier);
+
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
+        await dbContext.SaveChangesAsync();
+
+        Assert.Equal(2, sentCount);
+        Assert.Equal(2, notifier.CallCount);
+        Assert.Equal(2, await dbContext.Deliveries.CountAsync());
+    }
+
+    [Fact]
+    public async Task DispatchAsync_InstitutionScopeSubscription_ShouldSkipWhenInstitutionRegionDiffers()
+    {
+        await using var dbContext = CreateDbContext();
+        var seeded = await SeedDispatchScopeAsync(dbContext, addInstitutionSubscription: true, institutionRegionKey: "pt-centro");
+
+        var notifier = new SequenceNotifier(DeliveryStatus.Sent, DeliveryStatus.Sent);
+        var engine = CreateEngine(dbContext, notifier);
+
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
+        await dbContext.SaveChangesAsync();
+
+        Assert.Equal(1, sentCount);
+        Assert.Equal(1, notifier.CallCount);
+
+        var delivery = await dbContext.Deliveries.SingleAsync();
+        Assert.Equal(seeded.RegionSubscriptionId, delivery.SubscriptionId);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WildcardMetricSubscription_ShouldMatchAnyMetric()
     {
         await using var dbContext = CreateDbContext();
         var seeded = await SeedDispatchScopeAsync(
             dbContext,
-            payloadJson: BuildPayloadJson(
-                signal: "critical-active",
-                transitionKind: "still-critical",
-                currentState: "critical",
-                currentBucket: 0,
-                currentUnits: 89m,
-                criticalUnits: 100m),
-            notificationState: new NotificationStateSeed(
-                IsLowOpen: true,
-                LastLowNotifiedAtUtc: DateTime.UtcNow.AddHours(-1),
-                LastLowNotifiedBucket: 0,
-                LastLowNotifiedUnits: 90m,
-                LastRecoveryNotifiedAtUtc: null));
+            addInstitutionSubscription: false,
+            regionMetricFilter: "*");
 
         var notifier = new SequenceNotifier(DeliveryStatus.Sent);
         var engine = CreateEngine(dbContext, notifier);
 
-        await engine.DispatchAsync([seeded.Event]);
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
         await dbContext.SaveChangesAsync();
 
+        Assert.Equal(1, sentCount);
+        Assert.Equal(1, notifier.CallCount);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_SpecificMetricSubscription_ShouldSkipDifferentMetric()
+    {
+        await using var dbContext = CreateDbContext();
+        var seeded = await SeedDispatchScopeAsync(
+            dbContext,
+            addInstitutionSubscription: false,
+            regionMetricFilter: "blood-group-a-plus");
+
+        var notifier = new SequenceNotifier(DeliveryStatus.Sent);
+        var engine = CreateEngine(dbContext, notifier);
+
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
+        await dbContext.SaveChangesAsync();
+
+        Assert.Equal(0, sentCount);
         Assert.Equal(0, notifier.CallCount);
         Assert.Equal(0, await dbContext.Deliveries.CountAsync());
-
-        var state = await dbContext.SubscriptionNotificationStates.SingleAsync();
-        Assert.True(state.IsLowOpen);
-        Assert.Equal(0, state.LastLowNotifiedBucket);
-        Assert.Equal(90m, state.LastLowNotifiedUnits);
     }
 
     [Fact]
-    public async Task DispatchAsync_WhenReminderIsDue_ShouldSendReminder()
+    public async Task DispatchAsync_WildcardMetricSubscription_ShouldSendPerMetricEventWhenMultipleMetricsInScope()
     {
         await using var dbContext = CreateDbContext();
         var seeded = await SeedDispatchScopeAsync(
             dbContext,
-            payloadJson: BuildPayloadJson(
-                signal: "critical-active",
-                transitionKind: "still-critical",
-                currentState: "critical",
-                currentBucket: 0,
-                currentUnits: 88m,
-                criticalUnits: 100m),
-            notificationState: new NotificationStateSeed(
-                IsLowOpen: true,
-                LastLowNotifiedAtUtc: DateTime.UtcNow.AddHours(-25),
-                LastLowNotifiedBucket: 0,
-                LastLowNotifiedUnits: 90m,
-                LastRecoveryNotifiedAtUtc: null));
+            addInstitutionSubscription: false,
+            regionMetricFilter: "*");
 
-        var notifier = new SequenceNotifier(DeliveryStatus.Sent);
+        var secondEvent = await AddEventWithMetricAsync(
+            dbContext,
+            seeded.SourceId,
+            seeded.RegionId,
+            "blood-group-a-plus");
+
+        var notifier = new SequenceNotifier(DeliveryStatus.Sent, DeliveryStatus.Sent);
         var engine = CreateEngine(dbContext, notifier);
 
-        await engine.DispatchAsync([seeded.Event]);
+        var sentCount = await engine.DispatchAsync([seeded.Event, secondEvent]);
         await dbContext.SaveChangesAsync();
 
-        var delivery = await dbContext.Deliveries.SingleAsync();
-        Assert.Equal("sent", delivery.Status);
-        Assert.Equal(1, notifier.CallCount);
-        Assert.Equal("critical-reminder", ReadPayloadField(notifier.ReceivedEvents.Single().PayloadJson, "notificationKind"));
+        Assert.Equal(2, sentCount);
+        Assert.Equal(2, notifier.CallCount);
 
-        var state = await dbContext.SubscriptionNotificationStates.SingleAsync();
-        Assert.True(state.IsLowOpen);
-        Assert.Equal(0, state.LastLowNotifiedBucket);
-        Assert.Equal(88m, state.LastLowNotifiedUnits);
+        var deliveries = await dbContext.Deliveries.ToListAsync();
+        Assert.Equal(2, deliveries.Count);
+        Assert.All(deliveries, delivery => Assert.Equal(seeded.RegionSubscriptionId, delivery.SubscriptionId));
+        Assert.Equal(2, deliveries.Select(delivery => delivery.EventId).Distinct().Count());
     }
 
     [Fact]
-    public async Task DispatchAsync_WhenBucketWorsens_ShouldSendImmediateWorseningAlert()
+    public async Task DispatchAsync_InstitutionScopeWildcardMetric_ShouldMatchAnyMetricInInstitutionRegion()
     {
         await using var dbContext = CreateDbContext();
         var seeded = await SeedDispatchScopeAsync(
             dbContext,
-            payloadJson: BuildPayloadJson(
-                signal: "critical-active",
-                transitionKind: "still-critical",
-                currentState: "critical",
-                currentBucket: 2,
-                currentUnits: 70m,
-                criticalUnits: 100m),
-            notificationState: new NotificationStateSeed(
-                IsLowOpen: true,
-                LastLowNotifiedAtUtc: DateTime.UtcNow.AddHours(-1),
-                LastLowNotifiedBucket: 0,
-                LastLowNotifiedUnits: 90m,
-                LastRecoveryNotifiedAtUtc: null));
+            addInstitutionSubscription: true,
+            regionMetricFilter: "blood-group-ab-minus",
+            institutionMetricFilter: "*");
 
-        var notifier = new SequenceNotifier(DeliveryStatus.Sent);
-        var engine = CreateEngine(dbContext, notifier);
-
-        await engine.DispatchAsync([seeded.Event]);
-        await dbContext.SaveChangesAsync();
-
-        Assert.Equal(1, notifier.CallCount);
-        Assert.Equal("critical-worsening", ReadPayloadField(notifier.ReceivedEvents.Single().PayloadJson, "notificationKind"));
-
-        var state = await dbContext.SubscriptionNotificationStates.SingleAsync();
-        Assert.True(state.IsLowOpen);
-        Assert.Equal(2, state.LastLowNotifiedBucket);
-        Assert.Equal(70m, state.LastLowNotifiedUnits);
-    }
-
-    [Fact]
-    public async Task DispatchAsync_WhenRecoverySignal_ShouldSendAndCloseLowState()
-    {
-        await using var dbContext = CreateDbContext();
-        var seeded = await SeedDispatchScopeAsync(
+        var secondEvent = await AddEventWithMetricAsync(
             dbContext,
-            payloadJson: BuildPayloadJson(
-                signal: "recovery",
-                transitionKind: "recovered-from-critical",
-                currentState: "normal",
-                currentBucket: null,
-                currentUnits: 130m,
-                criticalUnits: 100m),
-            notificationState: new NotificationStateSeed(
-                IsLowOpen: true,
-                LastLowNotifiedAtUtc: DateTime.UtcNow.AddHours(-3),
-                LastLowNotifiedBucket: 1,
-                LastLowNotifiedUnits: 85m,
-                LastRecoveryNotifiedAtUtc: null));
+            seeded.SourceId,
+            seeded.RegionId,
+            "blood-group-a-plus");
 
-        var notifier = new SequenceNotifier(DeliveryStatus.Sent);
+        var notifier = new SequenceNotifier(DeliveryStatus.Sent, DeliveryStatus.Sent);
         var engine = CreateEngine(dbContext, notifier);
 
-        await engine.DispatchAsync([seeded.Event]);
+        var sentCount = await engine.DispatchAsync([seeded.Event, secondEvent]);
         await dbContext.SaveChangesAsync();
 
-        Assert.Equal(1, notifier.CallCount);
-        Assert.Equal("recovery", ReadPayloadField(notifier.ReceivedEvents.Single().PayloadJson, "notificationKind"));
+        Assert.Equal(2, sentCount);
+        Assert.Equal(2, notifier.CallCount);
+        Assert.NotNull(seeded.InstitutionSubscriptionId);
 
-        var delivery = await dbContext.Deliveries.SingleAsync();
-        Assert.Equal("sent", delivery.Status);
-
-        var state = await dbContext.SubscriptionNotificationStates.SingleAsync();
-        Assert.False(state.IsLowOpen);
-        Assert.Null(state.LastLowNotifiedBucket);
-        Assert.Null(state.LastLowNotifiedUnits);
-        Assert.NotNull(state.LastRecoveryNotifiedAtUtc);
-    }
-
-    [Fact]
-    public async Task DispatchAsync_WhenRecoverySendFails_ShouldStillCloseLowState()
-    {
-        await using var dbContext = CreateDbContext();
-        var seeded = await SeedDispatchScopeAsync(
-            dbContext,
-            payloadJson: BuildPayloadJson(
-                signal: "recovery",
-                transitionKind: "recovered-from-critical",
-                currentState: "warning",
-                currentBucket: null,
-                currentUnits: 110m,
-                criticalUnits: 100m),
-            notificationState: new NotificationStateSeed(
-                IsLowOpen: true,
-                LastLowNotifiedAtUtc: DateTime.UtcNow.AddHours(-3),
-                LastLowNotifiedBucket: 1,
-                LastLowNotifiedUnits: 85m,
-                LastRecoveryNotifiedAtUtc: null));
-
-        var notifier = new SequenceNotifier(
-            DeliveryStatus.Failed,
-            DeliveryStatus.Failed,
-            DeliveryStatus.Failed);
-        var engine = CreateEngine(dbContext, notifier);
-
-        await engine.DispatchAsync([seeded.Event]);
-        await dbContext.SaveChangesAsync();
-
-        var delivery = await dbContext.Deliveries.SingleAsync();
-        Assert.Equal("failed", delivery.Status);
-        Assert.Equal(3, delivery.AttemptCount);
-        Assert.NotNull(delivery.LastError);
-
-        var state = await dbContext.SubscriptionNotificationStates.SingleAsync();
-        Assert.False(state.IsLowOpen);
-        Assert.Null(state.LastLowNotifiedBucket);
-        Assert.Null(state.LastLowNotifiedUnits);
-    }
-
-    [Fact]
-    public async Task DispatchAsync_WhenCriticalSendFails_ShouldKeepLowStateClosed()
-    {
-        await using var dbContext = CreateDbContext();
-        var seeded = await SeedDispatchScopeAsync(
-            dbContext,
-            payloadJson: BuildPayloadJson(
-                signal: "critical-active",
-                transitionKind: "entered-critical",
-                currentState: "critical",
-                currentBucket: 0,
-                currentUnits: 90m,
-                criticalUnits: 100m));
-
-        var notifier = new SequenceNotifier(
-            DeliveryStatus.Failed,
-            DeliveryStatus.Failed,
-            DeliveryStatus.Failed);
-        var engine = CreateEngine(dbContext, notifier);
-
-        await engine.DispatchAsync([seeded.Event]);
-        await dbContext.SaveChangesAsync();
-
-        var delivery = await dbContext.Deliveries.SingleAsync();
-        Assert.Equal("failed", delivery.Status);
-        Assert.Equal(3, delivery.AttemptCount);
-
-        var state = await dbContext.SubscriptionNotificationStates.SingleAsync();
-        Assert.False(state.IsLowOpen);
-        Assert.Null(state.LastLowNotifiedAtUtc);
-        Assert.Null(state.LastLowNotifiedBucket);
-        Assert.Null(state.LastLowNotifiedUnits);
+        var deliveries = await dbContext.Deliveries.ToListAsync();
+        Assert.Equal(2, deliveries.Count);
+        Assert.All(deliveries, delivery => Assert.Equal(seeded.InstitutionSubscriptionId!.Value, delivery.SubscriptionId));
     }
 
     private static DispatchEngine CreateEngine(BloodWatchDbContext dbContext, SequenceNotifier notifier)
@@ -269,13 +172,7 @@ public sealed class DispatchEngineTests
         return new DispatchEngine(
             dbContext,
             [notifier],
-            NullLogger<DispatchEngine>.Instance,
-            Options.Create(new AlertThresholdOptions
-            {
-                ReminderIntervalHours = 24,
-                WorseningBucketDelta = 1,
-                SendRecoveryNotification = true,
-            }));
+            NullLogger<DispatchEngine>.Instance);
     }
 
     private static BloodWatchDbContext CreateDbContext()
@@ -291,36 +188,48 @@ public sealed class DispatchEngineTests
 
     private static async Task<SeededDispatchScope> SeedDispatchScopeAsync(
         BloodWatchDbContext dbContext,
-        string payloadJson,
-        NotificationStateSeed? notificationState = null)
+        bool addInstitutionSubscription,
+        string institutionRegionKey = "pt-norte",
+        string regionMetricFilter = "blood-group-o-minus",
+        string institutionMetricFilter = "blood-group-o-minus")
     {
         var source = new SourceEntity
         {
             Id = Guid.NewGuid(),
-            AdapterKey = "pt-transparencia-sns",
-            Name = "Portugal SNS Transparency",
+            AdapterKey = "pt-dador-ipst",
+            Name = "Portugal Dador/IPST",
             CreatedAtUtc = DateTime.UtcNow,
         };
 
-        var region = new RegionEntity
+        var eventRegion = new RegionEntity
         {
             Id = Guid.NewGuid(),
             SourceId = source.Id,
             Key = "pt-norte",
-            DisplayName = "Regiao de Saude Norte",
+            DisplayName = "Norte",
             CreatedAtUtc = DateTime.UtcNow,
         };
+
+        var institutionRegion = string.Equals(institutionRegionKey, eventRegion.Key, StringComparison.Ordinal)
+            ? eventRegion
+            : new RegionEntity
+            {
+                Id = Guid.NewGuid(),
+                SourceId = source.Id,
+                Key = institutionRegionKey,
+                DisplayName = institutionRegionKey,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
 
         var reserve = new CurrentReserveEntity
         {
             Id = Guid.NewGuid(),
             SourceId = source.Id,
-            RegionId = region.Id,
-            MetricKey = "overall",
-            Value = 90m,
-            Unit = "units",
-            Severity = null,
-            ReferenceDate = new DateOnly(2026, 2, 1),
+            RegionId = eventRegion.Id,
+            MetricKey = "blood-group-o-minus",
+            StatusKey = "critical",
+            StatusLabel = "Critical",
+            ReferenceDate = new DateOnly(2026, 2, 20),
             CapturedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,
         };
@@ -330,90 +239,130 @@ public sealed class DispatchEngineTests
             Id = Guid.NewGuid(),
             SourceId = source.Id,
             CurrentReserveId = reserve.Id,
-            RegionId = region.Id,
-            RuleKey = "low-stock-threshold.v1",
-            MetricKey = "overall",
+            RegionId = eventRegion.Id,
+            RuleKey = "reserve-status-transition.v1",
+            MetricKey = "blood-group-o-minus",
             IdempotencyKey = Guid.NewGuid().ToString("N"),
-            PayloadJson = payloadJson,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                signal = "status-alert",
+                transitionKind = "entered-non-normal",
+                currentStatusKey = "critical",
+            }),
             CreatedAtUtc = DateTime.UtcNow,
         };
 
-        var subscription = new SubscriptionEntity
+        var regionSubscription = new SubscriptionEntity
         {
             Id = Guid.NewGuid(),
             SourceId = source.Id,
             TypeKey = "discord-webhook",
             Target = "https://discord.com/api/webhooks/123/token",
+            ScopeType = "region",
             RegionFilter = "pt-norte",
-            MetricFilter = "overall",
+            InstitutionId = null,
+            MetricFilter = regionMetricFilter,
             IsEnabled = true,
             CreatedAtUtc = DateTime.UtcNow,
         };
 
         dbContext.Sources.Add(source);
-        dbContext.Regions.Add(region);
+        dbContext.Regions.Add(eventRegion);
+        if (!ReferenceEquals(institutionRegion, eventRegion))
+        {
+            dbContext.Regions.Add(institutionRegion);
+        }
         dbContext.CurrentReserves.Add(reserve);
         dbContext.Events.Add(@event);
-        dbContext.Subscriptions.Add(subscription);
+        dbContext.Subscriptions.Add(regionSubscription);
 
-        if (notificationState is not null)
+        Guid? institutionSubscriptionId = null;
+        if (addInstitutionSubscription)
         {
-            dbContext.SubscriptionNotificationStates.Add(new SubscriptionNotificationStateEntity
+            var center = new DonationCenterEntity
             {
-                SubscriptionId = subscription.Id,
-                IsLowOpen = notificationState.IsLowOpen,
-                LastLowNotifiedAtUtc = notificationState.LastLowNotifiedAtUtc,
-                LastLowNotifiedBucket = notificationState.LastLowNotifiedBucket,
-                LastLowNotifiedUnits = notificationState.LastLowNotifiedUnits,
-                LastRecoveryNotifiedAtUtc = notificationState.LastRecoveryNotifiedAtUtc,
+                Id = Guid.NewGuid(),
+                SourceId = source.Id,
+                RegionId = institutionRegion.Id,
+                ExternalId = "inst-1",
+                InstitutionCode = "SP",
+                Name = "CST Porto",
                 UpdatedAtUtc = DateTime.UtcNow,
+            };
+
+            dbContext.DonationCenters.Add(center);
+
+            institutionSubscriptionId = Guid.NewGuid();
+            dbContext.Subscriptions.Add(new SubscriptionEntity
+            {
+                Id = institutionSubscriptionId.Value,
+                SourceId = source.Id,
+                TypeKey = "discord-webhook",
+                Target = "https://discord.com/api/webhooks/123/token",
+                ScopeType = "institution",
+                RegionFilter = null,
+                InstitutionId = center.Id,
+                MetricFilter = institutionMetricFilter,
+                IsEnabled = true,
+                CreatedAtUtc = DateTime.UtcNow,
             });
         }
 
         await dbContext.SaveChangesAsync();
 
-        return new SeededDispatchScope(@event);
+        return new SeededDispatchScope(@event, source.Id, eventRegion.Id, regionSubscription.Id, institutionSubscriptionId);
     }
 
-    private static string BuildPayloadJson(
-        string signal,
-        string transitionKind,
-        string currentState,
-        int? currentBucket,
-        decimal currentUnits,
-        decimal criticalUnits)
+    private static async Task<EventEntity> AddEventWithMetricAsync(
+        BloodWatchDbContext dbContext,
+        Guid sourceId,
+        Guid regionId,
+        string metricKey)
     {
-        return JsonSerializer.Serialize(new
+        var reserve = new CurrentReserveEntity
         {
-            source = "pt-transparencia-sns",
-            region = "pt-norte",
-            metric = "overall",
-            signal,
-            transitionKind,
-            currentState,
-            currentCriticalBucket = currentBucket,
-            currentUnits,
-            criticalUnits,
-            capturedAtUtc = DateTime.UtcNow,
-        });
+            Id = Guid.NewGuid(),
+            SourceId = sourceId,
+            RegionId = regionId,
+            MetricKey = metricKey,
+            StatusKey = "warning",
+            StatusLabel = "Warning",
+            ReferenceDate = new DateOnly(2026, 2, 20),
+            CapturedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow,
+        };
+
+        var @event = new EventEntity
+        {
+            Id = Guid.NewGuid(),
+            SourceId = sourceId,
+            CurrentReserveId = reserve.Id,
+            RegionId = regionId,
+            RuleKey = "reserve-status-transition.v1",
+            MetricKey = metricKey,
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                signal = "status-alert",
+                transitionKind = "worsened",
+                currentStatusKey = "warning",
+            }),
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+
+        dbContext.CurrentReserves.Add(reserve);
+        dbContext.Events.Add(@event);
+        await dbContext.SaveChangesAsync();
+
+        return @event;
     }
 
-    private static string? ReadPayloadField(string payloadJson, string fieldName)
-    {
-        using var document = JsonDocument.Parse(payloadJson);
-        return document.RootElement.TryGetProperty(fieldName, out var property)
-            ? property.GetString()
-            : null;
-    }
-
-    private sealed record SeededDispatchScope(EventEntity Event);
-
-    private sealed record NotificationStateSeed(
-        bool IsLowOpen,
-        DateTime? LastLowNotifiedAtUtc,
-        int? LastLowNotifiedBucket,
-        decimal? LastLowNotifiedUnits,
-        DateTime? LastRecoveryNotifiedAtUtc);
+    private sealed record SeededDispatchScope(
+        EventEntity Event,
+        Guid SourceId,
+        Guid RegionId,
+        Guid RegionSubscriptionId,
+        Guid? InstitutionSubscriptionId);
 
     private sealed class SequenceNotifier(params DeliveryStatus[] statuses) : INotifier
     {
@@ -421,14 +370,12 @@ public sealed class DispatchEngineTests
 
         public string TypeKey => "discord-webhook";
         public int CallCount { get; private set; }
-        public List<Event> ReceivedEvents { get; } = [];
 
         public Task<Delivery> SendAsync(Event @event, string target, CancellationToken cancellationToken = default)
         {
             CallCount++;
-            ReceivedEvents.Add(@event);
-
             var status = _statuses.Count > 0 ? _statuses.Dequeue() : DeliveryStatus.Failed;
+
             return Task.FromResult(new Delivery(
                 TypeKey,
                 target,

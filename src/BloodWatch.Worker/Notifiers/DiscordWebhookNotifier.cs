@@ -80,8 +80,6 @@ public sealed class DiscordWebhookNotifier(
 
         var regionLabel = @event.Region?.DisplayName ?? @event.Region?.Key ?? "Unknown region";
         var metricLabel = ToFriendlyMetricLabel(@event.Metric.Key);
-        var currentUnits = payload.CurrentUnits?.ToString("0.##", CultureInfo.InvariantCulture) ?? "?";
-        var criticalUnits = payload.CriticalUnits?.ToString("0.##", CultureInfo.InvariantCulture) ?? "?";
 
         var capturedAtLabel = payload.CapturedAtUtc is not null
             ? payload.CapturedAtUtc.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)
@@ -91,8 +89,8 @@ public sealed class DiscordWebhookNotifier(
         {
             new DiscordWebhookField("Blood group", metricLabel, true),
             new DiscordWebhookField("Region", regionLabel, false),
-            new DiscordWebhookField("Available units", currentUnits, true),
-            new DiscordWebhookField("Critical threshold", criticalUnits, true),
+            new DiscordWebhookField("Current status", payload.CurrentStatusLabel ?? "Unknown", true),
+            new DiscordWebhookField("Previous status", payload.PreviousStatusLabel ?? "Unknown", true),
             new DiscordWebhookField("Source", @event.Source.Name, false),
             new DiscordWebhookField("Captured at", capturedAtLabel, false),
         };
@@ -114,29 +112,34 @@ public sealed class DiscordWebhookNotifier(
         var regionLabel = @event.Region?.DisplayName ?? @event.Region?.Key ?? "the selected region";
         var metricLabel = ToFriendlyMetricLabel(@event.Metric.Key);
 
-        return payload.NotificationKind switch
+        if (string.Equals(payload.Signal, "recovery", StringComparison.OrdinalIgnoreCase))
         {
-            "critical-alert" => new NotificationTemplate(
-                Title: "Critical stock alert",
-                Description: $"{metricLabel} stock is below the critical threshold in {regionLabel}.",
-                Color: 15158332),
-            "critical-reminder" => new NotificationTemplate(
-                Title: "Critical stock reminder",
-                Description: $"{metricLabel} stock remains below the critical threshold in {regionLabel}.",
-                Color: 15158332),
-            "critical-worsening" => new NotificationTemplate(
-                Title: "Critical stock worsening",
-                Description: $"{metricLabel} stock has worsened and remains in a critical state in {regionLabel}.",
-                Color: 15158332),
-            "recovery" => new NotificationTemplate(
-                Title: "Stock recovered",
-                Description: $"{metricLabel} stock has recovered above the critical threshold in {regionLabel}.",
-                Color: 3066993),
-            _ => new NotificationTemplate(
-                Title: "Blood stock update",
-                Description: $"{metricLabel} stock status changed in {regionLabel}.",
-                Color: 3447003),
-        };
+            return new NotificationTemplate(
+                Title: "Reserve status recovered",
+                Description: $"{metricLabel} returned to normal in {regionLabel}.",
+                Color: 3066993);
+        }
+
+        if (string.Equals(payload.TransitionKind, "worsened", StringComparison.OrdinalIgnoreCase))
+        {
+            return new NotificationTemplate(
+                Title: "Reserve status worsened",
+                Description: $"{metricLabel} status worsened in {regionLabel}.",
+                Color: 15158332);
+        }
+
+        if (string.Equals(payload.TransitionKind, "non-normal-presence", StringComparison.OrdinalIgnoreCase))
+        {
+            return new NotificationTemplate(
+                Title: "Reserve status alert",
+                Description: $"{metricLabel} is currently in a non-normal status in {regionLabel}.",
+                Color: 15158332);
+        }
+
+        return new NotificationTemplate(
+            Title: "Reserve status alert",
+            Description: $"{metricLabel} entered a non-normal status in {regionLabel}.",
+            Color: 15158332);
     }
 
     private static EventPayload ParsePayload(string payloadJson)
@@ -147,17 +150,19 @@ public sealed class DiscordWebhookNotifier(
             var root = document.RootElement;
 
             return new EventPayload(
-                NotificationKind: ReadString(root, "notificationKind") ?? "critical-alert",
-                CurrentUnits: ReadDecimal(root, "currentUnits"),
-                CriticalUnits: ReadDecimal(root, "criticalUnits"),
+                Signal: ReadString(root, "signal"),
+                TransitionKind: ReadString(root, "transitionKind"),
+                PreviousStatusLabel: ReadString(root, "previousStatusLabel"),
+                CurrentStatusLabel: ReadString(root, "currentStatusLabel"),
                 CapturedAtUtc: ReadDateTime(root, "capturedAtUtc"));
         }
         catch (JsonException)
         {
             return new EventPayload(
-                NotificationKind: "critical-alert",
-                CurrentUnits: null,
-                CriticalUnits: null,
+                Signal: null,
+                TransitionKind: null,
+                PreviousStatusLabel: null,
+                CurrentStatusLabel: null,
                 CapturedAtUtc: null);
         }
     }
@@ -170,10 +175,6 @@ public sealed class DiscordWebhookNotifier(
         }
 
         var normalized = metricKey.Trim().ToLowerInvariant();
-        if (normalized == "overall")
-        {
-            return "Overall";
-        }
 
         const string bloodPrefix = "blood-group-";
         if (!normalized.StartsWith(bloodPrefix, StringComparison.Ordinal))
@@ -181,8 +182,7 @@ public sealed class DiscordWebhookNotifier(
             return metricKey;
         }
 
-        var suffix = normalized[bloodPrefix.Length..];
-        suffix = suffix
+        var suffix = normalized[bloodPrefix.Length..]
             .Replace("-minus", "-", StringComparison.Ordinal)
             .Replace("-plus", "+", StringComparison.Ordinal);
 
@@ -197,27 +197,6 @@ public sealed class DiscordWebhookNotifier(
         }
 
         return property.GetString();
-    }
-
-    private static decimal? ReadDecimal(JsonElement root, string propertyName)
-    {
-        if (!root.TryGetProperty(propertyName, out var property))
-        {
-            return null;
-        }
-
-        if (property.ValueKind == JsonValueKind.Number && property.TryGetDecimal(out var numberValue))
-        {
-            return numberValue;
-        }
-
-        if (property.ValueKind == JsonValueKind.String
-            && decimal.TryParse(property.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedValue))
-        {
-            return parsedValue;
-        }
-
-        return null;
     }
 
     private static DateTimeOffset? ReadDateTime(JsonElement root, string propertyName)
@@ -248,9 +227,10 @@ public sealed class DiscordWebhookNotifier(
     private sealed record NotificationTemplate(string Title, string Description, int Color);
 
     private sealed record EventPayload(
-        string NotificationKind,
-        decimal? CurrentUnits,
-        decimal? CriticalUnits,
+        string? Signal,
+        string? TransitionKind,
+        string? PreviousStatusLabel,
+        string? CurrentStatusLabel,
         DateTimeOffset? CapturedAtUtc);
 
     private sealed record DiscordWebhookPayload(string Content, IReadOnlyCollection<DiscordWebhookEmbed> Embeds);

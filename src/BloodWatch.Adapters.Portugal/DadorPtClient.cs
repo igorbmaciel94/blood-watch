@@ -5,16 +5,34 @@ using Microsoft.Extensions.Options;
 
 namespace BloodWatch.Adapters.Portugal;
 
-public sealed class TransparenciaSnsClient(
+public sealed class DadorPtClient(
     HttpClient httpClient,
-    IOptions<TransparenciaSnsClientOptions> options,
-    ILogger<TransparenciaSnsClient> logger) : ITransparenciaSnsClient
+    IOptions<DadorPtClientOptions> options,
+    ILogger<DadorPtClient> logger) : IDadorPtClient
 {
     private readonly HttpClient _httpClient = httpClient;
-    private readonly TransparenciaSnsClientOptions _options = options.Value;
-    private readonly ILogger<TransparenciaSnsClient> _logger = logger;
+    private readonly DadorPtClientOptions _options = options.Value;
+    private readonly ILogger<DadorPtClient> _logger = logger;
 
-    public async Task<JsonDocument> GetReservasPayloadAsync(CancellationToken cancellationToken = default)
+    public Task<JsonDocument> GetBloodReservesPayloadAsync(CancellationToken cancellationToken = default)
+    {
+        return GetJsonDocumentAsync(_options.BloodReservesPath, "blood-reserves", cancellationToken);
+    }
+
+    public Task<JsonDocument> GetInstitutionsPayloadAsync(CancellationToken cancellationToken = default)
+    {
+        return GetJsonDocumentAsync(_options.InstitutionsPath, "institutions", cancellationToken);
+    }
+
+    public Task<JsonDocument> GetSessionsPayloadAsync(CancellationToken cancellationToken = default)
+    {
+        return GetJsonDocumentAsync(_options.SessionsPath, "sessions", cancellationToken);
+    }
+
+    private async Task<JsonDocument> GetJsonDocumentAsync(
+        string path,
+        string endpointName,
+        CancellationToken cancellationToken)
     {
         var maxAttempts = Math.Max(1, _options.MaxRetries + 1);
         var delay = TimeSpan.FromMilliseconds(400);
@@ -23,7 +41,7 @@ public sealed class TransparenciaSnsClient(
         {
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, _options.DownloadPath);
+                using var request = new HttpRequestMessage(HttpMethod.Get, path);
                 request.Headers.Accept.ParseAdd("application/json");
 
                 using var response = await _httpClient.SendAsync(
@@ -34,7 +52,8 @@ public sealed class TransparenciaSnsClient(
                 if (IsTransientStatusCode(response.StatusCode) && attempt < maxAttempts)
                 {
                     _logger.LogWarning(
-                        "Transparencia SNS status {StatusCode} on attempt {Attempt}/{MaxAttempts}. Retrying in {DelayMs}ms.",
+                        "dador.pt {Endpoint} returned {StatusCode} on attempt {Attempt}/{MaxAttempts}. Retrying in {DelayMs}ms.",
+                        endpointName,
                         (int)response.StatusCode,
                         attempt,
                         maxAttempts,
@@ -54,7 +73,8 @@ public sealed class TransparenciaSnsClient(
             {
                 _logger.LogWarning(
                     ex,
-                    "Transparencia SNS request attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelayMs}ms.",
+                    "dador.pt {Endpoint} request attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelayMs}ms.",
+                    endpointName,
                     attempt,
                     maxAttempts,
                     delay.TotalMilliseconds);
@@ -64,7 +84,7 @@ public sealed class TransparenciaSnsClient(
             }
         }
 
-        throw new HttpRequestException("Failed to fetch reservas payload from Transparencia SNS after retry attempts.");
+        throw new HttpRequestException($"Failed to fetch payload '{endpointName}' from dador.pt after retry attempts.");
     }
 
     private static bool IsTransientStatusCode(HttpStatusCode statusCode)

@@ -1,14 +1,14 @@
 # BloodWatch
 
-BloodWatch is a C# platform to monitor public blood inventory signals and notify subscribers when rules trigger.
+BloodWatch is a C# platform to monitor public blood reserve status signals and notify subscribers when status transitions are detected.
 
 > Disclaimer: No medical advice. Always verify donation eligibility and guidance with official health authorities.
 
-## Milestone M0 status
+## Milestone status
 
-M0 foundation includes:
-- `BloodWatch.sln` and core projects under `src/`
-- Postgres baseline via EF Core migration + seed data for Portugal source
+Current baseline includes:
+- `BloodWatch.sln` and projects under `src/`
+- Postgres baseline via EF Core migration (fresh schema for dador/IPST)
 - Local development with Docker Compose (`postgres`, `api`, `worker`, `pgadmin`)
 - CI workflow for restore/build/test on push + PR to `main`
 
@@ -26,18 +26,26 @@ docker compose up --build
 - Health: [http://localhost:8080/health](http://localhost:8080/health)
 - OpenAPI spec: [http://localhost:8080/openapi/v1.json](http://localhost:8080/openapi/v1.json)
 - API docs UI (Swagger): [http://localhost:8080/docs](http://localhost:8080/docs)
+
+Public endpoints (`source=pt-dador-ipst`):
 - Sources: [http://localhost:8080/api/v1/sources](http://localhost:8080/api/v1/sources)
-- Regions (requires `source`): [http://localhost:8080/api/v1/regions?source=pt-transparencia-sns](http://localhost:8080/api/v1/regions?source=pt-transparencia-sns)
-- Latest reserves (`source` required; optional `region` and `metric`):
-  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns)
-  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte)
-  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&metric=overall](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&metric=overall)
-  - [http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall](http://localhost:8080/api/v1/reserves/latest?source=pt-transparencia-sns&region=pt-norte&metric=overall)
-- Subscriptions (require `X-API-Key`):
-  - `POST /api/v1/subscriptions`
-  - `GET /api/v1/subscriptions`
-  - `GET /api/v1/subscriptions/{id}`
-  - `DELETE /api/v1/subscriptions/{id}`
+- Regions: [http://localhost:8080/api/v1/regions?source=pt-dador-ipst](http://localhost:8080/api/v1/regions?source=pt-dador-ipst)
+- Latest reserves (status-only):
+  - [http://localhost:8080/api/v1/reserves/latest?source=pt-dador-ipst](http://localhost:8080/api/v1/reserves/latest?source=pt-dador-ipst)
+  - [http://localhost:8080/api/v1/reserves/latest?source=pt-dador-ipst&region=pt-norte](http://localhost:8080/api/v1/reserves/latest?source=pt-dador-ipst&region=pt-norte)
+- Institutions:
+  - [http://localhost:8080/api/v1/institutions?source=pt-dador-ipst](http://localhost:8080/api/v1/institutions?source=pt-dador-ipst)
+  - [http://localhost:8080/api/v1/institutions?source=pt-dador-ipst&region=pt-norte](http://localhost:8080/api/v1/institutions?source=pt-dador-ipst&region=pt-norte)
+  - [http://localhost:8080/api/v1/institutions/nearest?source=pt-dador-ipst&lat=38.7223&lon=-9.1393&limit=5](http://localhost:8080/api/v1/institutions/nearest?source=pt-dador-ipst&lat=38.7223&lon=-9.1393&limit=5)
+- Upcoming sessions:
+  - [http://localhost:8080/api/v1/sessions?source=pt-dador-ipst](http://localhost:8080/api/v1/sessions?source=pt-dador-ipst)
+  - [http://localhost:8080/api/v1/sessions?source=pt-dador-ipst&region=pt-norte](http://localhost:8080/api/v1/sessions?source=pt-dador-ipst&region=pt-norte)
+
+Subscription endpoints (require `X-API-Key`):
+- `POST /api/v1/subscriptions` (`scopeType=region|institution`)
+- `GET /api/v1/subscriptions`
+- `GET /api/v1/subscriptions/{id}`
+- `DELETE /api/v1/subscriptions/{id}`
 
 ### 3) Verify Worker Health
 
@@ -79,14 +87,18 @@ docs/
 
 - Architecture: `docs/architecture.md`
 - Adapter guide: `docs/adapter-howto.md`
-- Portugal data source: `docs/data-sources/portugal-reservas.md`
+- Portugal data source: `docs/data-sources/portugal-dador-ipst.md`
 
-## Alert behavior (M2)
+## Alert behavior
 
-- Alerts are evaluated against latest reserves every worker cycle.
-- Notifications are scoped by exact subscription match: `source + region + metric`.
-- Critical policy:
-  - Send immediately when a scope is critical.
-  - While still critical, send a reminder every 24 hours.
-  - Send immediately again when critical bucket worsens.
-  - Send recovery notification when stock exits critical.
+- Alerts are evaluated against latest reserve status every worker cycle.
+- Subscriptions require exact `source + scopeType` matching.
+- `metric` is optional:
+  - explicit metric matches only that metric key
+  - omitted/`null` metric is stored as wildcard (`*`) and matches all metric keys in the selected scope
+- Rule behavior:
+  - alert when status enters non-normal
+  - alert when status worsens
+  - recovery alert when status returns to normal
+- Worker also evaluates non-normal status presence each cycle so new matching subscriptions receive an initial alert without waiting for a new transition.
+- Wildcard subscriptions still dispatch one notification per metric event (no aggregation).
