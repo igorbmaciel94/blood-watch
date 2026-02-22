@@ -147,11 +147,19 @@ public sealed class DispatchEngine(
 
                 if (!_notifiersByType.TryGetValue(subscription.TypeKey, out var notifier))
                 {
-                    delivery.AttemptCount = 0;
-                    delivery.Status = "failed";
-                    delivery.LastError = $"No notifier registered for type '{subscription.TypeKey}'.";
-                    delivery.SentAtUtc = null;
-                    continue;
+                    if (NotificationChannelTypeCatalog.TryNormalizeStored(subscription.TypeKey, out var normalizedTypeKey)
+                        && _notifiersByType.TryGetValue(normalizedTypeKey, out var normalizedNotifier))
+                    {
+                        notifier = normalizedNotifier;
+                    }
+                    else
+                    {
+                        delivery.AttemptCount = 0;
+                        delivery.Status = "failed";
+                        delivery.LastError = $"No notifier registered for type '{subscription.TypeKey}'.";
+                        delivery.SentAtUtc = null;
+                        continue;
+                    }
                 }
 
                 var wasSent = await SendWithRetriesAsync(notifier, modelEvent, subscription, delivery, cancellationToken);
@@ -282,6 +290,12 @@ public sealed class DispatchEngine(
                 }
 
                 delivery.LastError = TrimError(result.LastError) ?? "Notifier returned failed delivery status.";
+                if (result.FailureKind == DeliveryFailureKind.Permanent)
+                {
+                    delivery.Status = "failed";
+                    delivery.SentAtUtc = null;
+                    return false;
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

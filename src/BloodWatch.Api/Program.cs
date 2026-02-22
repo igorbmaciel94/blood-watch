@@ -4,14 +4,20 @@ using BloodWatch.Api.DependencyInjection;
 using BloodWatch.Api.Endpoints;
 using BloodWatch.Infrastructure;
 using BloodWatch.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+
+if (TryHandlePasswordHashCommand(args))
+{
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
     .AddBloodWatchInfrastructure(builder.Configuration)
     .AddPortugalAdapter()
-    .AddBloodWatchApi();
+    .AddBloodWatchApi(builder.Configuration);
 
 var app = builder.Build();
 
@@ -19,6 +25,9 @@ await EnsureDatabaseReadyAsync(app);
 
 app.UseExceptionHandler();
 app.UseRateLimiter();
+app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapOpenApi();
 
@@ -49,9 +58,32 @@ app.MapGet("/health", async (BloodWatchDbContext dbContext, CancellationToken ca
 });
 
 app.MapPublicReadEndpoints();
+app.MapSubscriptionAuthEndpoints();
 app.MapSubscriptionEndpoints();
+app.MapFallbackToFile("/app", "app/index.html");
+app.MapFallbackToFile("/app/{*path:nonfile}", "app/index.html");
 
 await app.RunAsync();
+
+static bool TryHandlePasswordHashCommand(string[] args)
+{
+    if (args.Length == 0 || !string.Equals(args[0], "hash-password", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    if (args.Length < 2 || string.IsNullOrWhiteSpace(args[1]))
+    {
+        Console.Error.WriteLine("Usage: dotnet run --project src/BloodWatch.Api -- hash-password \"<plain-password>\"");
+        Environment.ExitCode = 1;
+        return true;
+    }
+
+    var hasher = new PasswordHasher<string>();
+    var passwordHash = hasher.HashPassword("bloodwatch-admin", args[1]);
+    Console.WriteLine(passwordHash);
+    return true;
+}
 
 static async Task EnsureDatabaseReadyAsync(WebApplication app)
 {

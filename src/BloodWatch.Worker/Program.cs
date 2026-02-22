@@ -23,15 +23,23 @@ builder.Services
 builder.Services
     .AddHttpClient<DiscordWebhookNotifier>((serviceProvider, httpClient) =>
     {
-        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-        var timeoutRaw = configuration["BLOODWATCH:DISCORD_WEBHOOK_TIMEOUT_SECONDS"]
-            ?? Environment.GetEnvironmentVariable("BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS");
-        var timeoutSeconds = int.TryParse(timeoutRaw, out var parsedValue) ? parsedValue : 10;
+        httpClient.Timeout = ResolveTimeout(
+            serviceProvider,
+            "BLOODWATCH:DISCORD_WEBHOOK_TIMEOUT_SECONDS",
+            "BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS");
+    });
 
-        httpClient.Timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 5, 120));
+builder.Services
+    .AddHttpClient<TelegramNotifier>((serviceProvider, httpClient) =>
+    {
+        httpClient.Timeout = ResolveTimeout(
+            serviceProvider,
+            "BLOODWATCH:TELEGRAM_TIMEOUT_SECONDS",
+            "BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS");
     });
 
 builder.Services.AddTransient<INotifier>(serviceProvider => serviceProvider.GetRequiredService<DiscordWebhookNotifier>());
+builder.Services.AddTransient<INotifier>(serviceProvider => serviceProvider.GetRequiredService<TelegramNotifier>());
 
 builder.Services.AddHostedService<IngestionWorker>();
 builder.Services.AddOpenApi();
@@ -69,3 +77,11 @@ app.MapGet("/health/ready", async (BloodWatchDbContext dbContext, CancellationTo
 });
 
 await app.RunAsync();
+
+static TimeSpan ResolveTimeout(IServiceProvider serviceProvider, string configKey, string envVarKey)
+{
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var timeoutRaw = configuration[configKey] ?? Environment.GetEnvironmentVariable(envVarKey);
+    var timeoutSeconds = int.TryParse(timeoutRaw, out var parsedValue) ? parsedValue : 10;
+    return TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 5, 120));
+}

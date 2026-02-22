@@ -1,0 +1,71 @@
+name: security
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  scans:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            **/packages.lock.json
+
+      - name: Restore
+        run: dotnet restore BloodWatch.sln
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check vulnerable NuGet packages
+        run: |
+          set -euo pipefail
+          dotnet list BloodWatch.sln package --vulnerable --include-transitive --format json > vulnerability-report.json
+          if jq -e '[.. | objects | .vulnerabilities? // empty | .[]?] | length > 0' vulnerability-report.json > /dev/null; then
+            echo "Vulnerable packages were detected:"
+            jq '[.. | objects | select((.vulnerabilities? | type) == "array" and (.vulnerabilities | length > 0)) | {id: .id, resolvedVersion: .resolvedVersion, vulnerabilities: .vulnerabilities}]' vulnerability-report.json
+            exit 1
+          fi
+
+      - name: Guard tracked config secrets
+        run: |
+          set -euo pipefail
+
+          signing_key="$(jq -r '.BloodWatch.JwtAuth.SigningKey // ""' src/BloodWatch.Api/appsettings.json)"
+          if [ -n "$signing_key" ]; then
+            echo "appsettings.json must not contain a committed JWT signing key."
+            exit 1
+          fi
+
+          admin_password_hash="$(jq -r '.BloodWatch.JwtAuth.AdminPasswordHash // ""' src/BloodWatch.Api/appsettings.json)"
+          if [ -n "$admin_password_hash" ]; then
+            echo "appsettings.json must not contain a committed JWT admin password hash."
+            exit 1
+          fi
+
+          compose_signing_key="$(awk -F': ' '/BloodWatch__JwtAuth__SigningKey:/ {print $2; exit}' docker-compose.yml | tr -d '"\r')"
+          if [ -n "$compose_signing_key" ] && [[ "$compose_signing_key" != *'${'* ]]; then
+            echo "docker-compose.yml must not contain a raw BloodWatch__JwtAuth__SigningKey value."
+            exit 1
+          fi
+
+          compose_admin_hash="$(awk -F': ' '/BloodWatch__JwtAuth__AdminPasswordHash:/ {print $2; exit}' docker-compose.yml | tr -d '"\r')"
+          if [ -n "$compose_admin_hash" ] && [[ "$compose_admin_hash" != *'${'* ]]; then
+            echo "docker-compose.yml must not contain a raw BloodWatch__JwtAuth__AdminPasswordHash value."
+            exit 1
+          fi

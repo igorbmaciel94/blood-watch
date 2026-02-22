@@ -16,6 +16,13 @@ Current baseline includes:
 
 ### 1) Start locally with Docker
 
+Prepare auth env vars first:
+
+```bash
+cp .env.example .env
+dotnet run --project src/BloodWatch.Api -- hash-password "<your-strong-password>"
+```
+
 ```bash
 docker compose up --build
 ```
@@ -26,6 +33,7 @@ docker compose up --build
 - Health: [http://localhost:8080/health](http://localhost:8080/health)
 - OpenAPI spec: [http://localhost:8080/openapi/v1.json](http://localhost:8080/openapi/v1.json)
 - API docs UI (Swagger): [http://localhost:8080/docs](http://localhost:8080/docs)
+- Subscription UI (React): [http://localhost:8080/app](http://localhost:8080/app) (redirects to `/app/login` until authenticated)
 
 Public endpoints (`source=pt-dador-ipst`):
 - Sources: [http://localhost:8080/api/v1/sources](http://localhost:8080/api/v1/sources)
@@ -41,10 +49,16 @@ Public endpoints (`source=pt-dador-ipst`):
   - [http://localhost:8080/api/v1/sessions?source=pt-dador-ipst](http://localhost:8080/api/v1/sessions?source=pt-dador-ipst)
   - [http://localhost:8080/api/v1/sessions?source=pt-dador-ipst&region=pt-norte](http://localhost:8080/api/v1/sessions?source=pt-dador-ipst&region=pt-norte)
 
-Subscription endpoints (require `X-API-Key`):
-- `POST /api/v1/subscriptions` (`scopeType=region|institution`)
+Auth endpoint:
+- `POST /api/v1/auth/token` with body `{ "email": "...", "password": "..." }` to obtain a short-lived JWT bearer token.
+- Generate an admin password hash locally:
+  - `dotnet run --project src/BloodWatch.Api -- hash-password "<your-strong-password>"`
+
+Subscription endpoints (require `Authorization: Bearer <token>`):
+- `POST /api/v1/subscriptions` (`scopeType=region|institution`, `type=discord:webhook|telegram:chat`)
 - `GET /api/v1/subscriptions`
 - `GET /api/v1/subscriptions/{id}`
+- `GET /api/v1/subscriptions/{id}/deliveries?limit=10`
 - `DELETE /api/v1/subscriptions/{id}`
 
 ### 3) Verify Worker Health

@@ -1,18 +1,23 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.RateLimiting;
 using BloodWatch.Api;
 using BloodWatch.Api.Options;
+using BloodWatch.Api.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 
 namespace BloodWatch.Api.DependencyInjection;
 
 public static class ApplicationServiceCollectionExtensions
 {
-    public static IServiceCollection AddBloodWatchApi(this IServiceCollection services)
+    public static IServiceCollection AddBloodWatchApi(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<ApiCachingOptions>()
             .BindConfiguration(ApiCachingOptions.SectionName);
@@ -20,8 +25,54 @@ public static class ApplicationServiceCollectionExtensions
         services.AddOptions<ApiRateLimitOptions>()
             .BindConfiguration(ApiRateLimitOptions.SectionName);
 
+        services.AddOptions<JwtAuthOptions>()
+            .BindConfiguration(JwtAuthOptions.SectionName);
+
         services.AddMemoryCache();
         services.AddProblemDetails();
+
+        services.AddScoped<ISubscriptionService, SubscriptionService>();
+
+        services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+        }).AddJwtBearer();
+
+        services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme).Configure<IOptions<JwtAuthOptions>>((
+            bearerOptions,
+            jwtAuthOptionsAccessor) =>
+        {
+            var configuredJwtOptions = jwtAuthOptionsAccessor.Value;
+            var validSigningKey = TryGetSigningKeyBytes(configuredJwtOptions.SigningKey, out var configuredKey)
+                ? configuredKey
+                : RandomNumberGenerator.GetBytes(64);
+
+            bearerOptions.MapInboundClaims = false;
+            bearerOptions.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateIssuerSigningKey = true,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromSeconds(60),
+                ValidIssuer = Normalize(configuredJwtOptions.Issuer) ?? "bloodwatch-api",
+                ValidAudience = Normalize(configuredJwtOptions.Audience) ?? "bloodwatch-clients",
+                IssuerSigningKey = new SymmetricSecurityKey(validSigningKey),
+                NameClaimType = "sub",
+                RoleClaimType = ApiAuthConstants.RoleClaimType,
+            };
+        });
+
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy(ApiAuthConstants.SubscriptionWritePolicyName, policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.RequireClaim(ApiAuthConstants.RoleClaimType, ApiAuthConstants.AdminRoleValue);
+            });
+        });
 
         services.AddRateLimiter(rateLimiterOptions =>
         {
@@ -42,6 +93,18 @@ public static class ApplicationServiceCollectionExtensions
                 });
             });
 
+            rateLimiterOptions.AddPolicy(ApiAuthConstants.AuthTokenRateLimitPolicyName, httpContext =>
+            {
+                var clientKey = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(clientKey, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                });
+            });
+
             rateLimiterOptions.OnRejected = async (context, cancellationToken) =>
             {
                 if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
@@ -53,7 +116,7 @@ public static class ApplicationServiceCollectionExtensions
                 {
                     Status = StatusCodes.Status429TooManyRequests,
                     Title = "Too many requests",
-                    Detail = "Rate limit exceeded for public API endpoints. Retry later.",
+                    Detail = "Rate limit exceeded for this endpoint. Retry later.",
                     Type = "https://httpstatuses.com/429",
                     Instance = context.HttpContext.Request.Path,
                 };
@@ -73,12 +136,12 @@ public static class ApplicationServiceCollectionExtensions
                 document.Components ??= new OpenApiComponents();
                 document.Components.SecuritySchemes ??= new Dictionary<string, OpenApiSecurityScheme>(StringComparer.Ordinal);
 
-                document.Components.SecuritySchemes[ApiAuthConstants.ApiKeySecuritySchemeId] = new OpenApiSecurityScheme
+                document.Components.SecuritySchemes[ApiAuthConstants.BearerSecuritySchemeId] = new OpenApiSecurityScheme
                 {
-                    Type = SecuritySchemeType.ApiKey,
-                    Name = ApiAuthConstants.ApiKeyHeaderName,
-                    In = ParameterLocation.Header,
-                    Description = "API key required for subscription write/read-by-id/delete endpoints.",
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    Description = "JWT bearer token required for subscription endpoints.",
                 };
 
                 return Task.CompletedTask;
@@ -101,7 +164,7 @@ public static class ApplicationServiceCollectionExtensions
                             Reference = new OpenApiReference
                             {
                                 Type = ReferenceType.SecurityScheme,
-                                Id = ApiAuthConstants.ApiKeySecuritySchemeId,
+                                Id = ApiAuthConstants.BearerSecuritySchemeId,
                             },
                         }
                     ] = []
@@ -110,6 +173,28 @@ public static class ApplicationServiceCollectionExtensions
                 return Task.CompletedTask;
             });
         });
+
         return services;
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
+    }
+
+    private static bool TryGetSigningKeyBytes(string? signingKey, out byte[] keyBytes)
+    {
+        keyBytes = [];
+
+        var normalized = Normalize(signingKey);
+        if (normalized is null)
+        {
+            return false;
+        }
+
+        keyBytes = Encoding.UTF8.GetBytes(normalized);
+        return keyBytes.Length >= 32;
     }
 }

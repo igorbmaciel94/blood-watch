@@ -1,6 +1,12 @@
 # Runbook
 
 ## Local development
+0) Create local env file from example and set JWT auth secrets:
+```bash
+cp .env.example .env
+dotnet run --project src/BloodWatch.Api -- hash-password "<strong-password>"
+```
+
 1) Start services:
 ```bash
 docker compose up -d
@@ -8,6 +14,7 @@ docker compose up -d
 
 2) Open API docs:
 - `http://localhost:8080/docs`
+- `http://localhost:8080/app` (subscription UI; redirects to `/app/login` if not authenticated)
 
 3) Check worker logs:
 ```bash
@@ -30,11 +37,22 @@ docker compose logs -f worker
 - `BloodWatch__Portugal__Dador__TimeoutSeconds`
 - `BloodWatch__Portugal__Dador__MaxRetries`
 - `BloodWatch__Portugal__Dador__UserAgent`
-- `BLOODWATCH__API_KEY` (for subscription endpoints)
+- `BloodWatch__JwtAuth__Enabled`
+- `BloodWatch__JwtAuth__Issuer`
+- `BloodWatch__JwtAuth__Audience`
+- `BloodWatch__JwtAuth__SigningKey` (JWT signing key; keep in secret manager)
+- `BloodWatch__JwtAuth__AdminEmail`
+- `BloodWatch__JwtAuth__AdminPasswordHash` (generate with `dotnet run --project src/BloodWatch.Api -- hash-password "<strong-password>"`)
+- `BloodWatch__JwtAuth__AccessTokenMinutes`
 - `BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS`
+- `BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS`
+- `BLOODWATCH__TELEGRAM_BOT_TOKEN`
 
 ## Notification policy
 - Subscriptions are evaluated by exact `source + scopeType`.
+- Supported channel types:
+  - `discord:webhook`
+  - `telegram:chat`
 - `metric` filter modes:
   - explicit metric key: matches only that key
   - wildcard metric (`null` in API, stored as `*`): matches all metric keys within the selected scope

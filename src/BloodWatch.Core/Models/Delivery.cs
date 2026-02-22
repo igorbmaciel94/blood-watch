@@ -6,4 +6,5 @@ public sealed record Delivery(
     DeliveryStatus Status,
     DateTime CreatedAtUtc,
     string? LastError = null,
-    DateTime? SentAtUtc = null);
+    DateTime? SentAtUtc = null,
+    DeliveryFailureKind FailureKind = DeliveryFailureKind.None);
