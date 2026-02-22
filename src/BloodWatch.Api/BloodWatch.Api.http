@@ -1,5 +1,7 @@
 @BloodWatch.Api_HostAddress = http://localhost:0
-@BloodWatch.Api_WriteApiKey = replace-me
+@BloodWatch.Api_AdminEmail = igorbmaciel@yahoo.com.br
+@BloodWatch.Api_AdminPassword = replace-me
+@BloodWatch.Api_BearerToken = replace-with-token
 @SourceKey = pt-dador-ipst
 
 GET {{BloodWatch.Api_HostAddress}}/health
@@ -57,13 +59,23 @@ Accept: application/json
 
 ###
 
+POST {{BloodWatch.Api_HostAddress}}/api/v1/auth/token
+Content-Type: application/json
+
+{
+  "email": "{{BloodWatch.Api_AdminEmail}}",
+  "password": "{{BloodWatch.Api_AdminPassword}}"
+}
+
+###
+
 POST {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions
 Content-Type: application/json
-X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
 
 {
   "source": "pt-dador-ipst",
-  "type": "discord-webhook",
+  "type": "discord:webhook",
   "target": "https://discord.com/api/webhooks/123/token",
   "scopeType": "region",
   "region": "pt-norte",
@@ -74,11 +86,25 @@ X-API-Key: {{BloodWatch.Api_WriteApiKey}}
 
 POST {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions
 Content-Type: application/json
-X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
 
 {
   "source": "pt-dador-ipst",
-  "type": "discord-webhook",
+  "type": "telegram:chat",
+  "target": "-1001234567890",
+  "scopeType": "region",
+  "region": "pt-norte"
+}
+
+###
+
+POST {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions
+Content-Type: application/json
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
+
+{
+  "source": "pt-dador-ipst",
+  "type": "discord:webhook",
   "target": "https://discord.com/api/webhooks/123/token",
   "scopeType": "institution",
   "institutionId": "00000000-0000-0000-0000-000000000000"
@@ -88,11 +114,11 @@ X-API-Key: {{BloodWatch.Api_WriteApiKey}}
 
 POST {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions
 Content-Type: application/json
-X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
 
 {
   "source": "pt-dador-ipst",
-  "type": "discord-webhook",
+  "type": "discord:webhook",
   "target": "https://discord.com/api/webhooks/123/token",
   "scopeType": "institution",
   "institutionId": "00000000-0000-0000-0000-000000000000",
@@ -103,17 +129,23 @@ X-API-Key: {{BloodWatch.Api_WriteApiKey}}
 
 GET {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions/00000000-0000-0000-0000-000000000000
 Accept: application/json
-X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
 
 ###
 
 GET {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions?scopeType=region
 Accept: application/json
-X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
+
+###
+
+GET {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions/00000000-0000-0000-0000-000000000000/deliveries?limit=10
+Accept: application/json
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
 
 ###
 
 DELETE {{BloodWatch.Api_HostAddress}}/api/v1/subscriptions/00000000-0000-0000-0000-000000000000
-X-API-Key: {{BloodWatch.Api_WriteApiKey}}
+Authorization: Bearer {{BloodWatch.Api_BearerToken}}
 
 ###

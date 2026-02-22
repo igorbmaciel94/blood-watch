@@ -181,7 +181,7 @@ public sealed class FetchPortugalReservesJobTests
         {
             Id = Guid.NewGuid(),
             SourceId = source.Id,
-            TypeKey = "discord-webhook",
+            TypeKey = "discord:webhook",
             Target = "https://discord.com/api/webhooks/123/token",
             ScopeType = "region",
             RegionFilter = "pt-norte",
@@ -283,7 +283,7 @@ public sealed class FetchPortugalReservesJobTests
     {
         private readonly Queue<DeliveryStatus> _statuses = new(statuses);
 
-        public string TypeKey => "discord-webhook";
+        public string TypeKey => "discord:webhook";
         public int CallCount { get; private set; }
 
         public Task<Delivery> SendAsync(Event @event, string target, CancellationToken cancellationToken = default)

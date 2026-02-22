@@ -1,5 +1,12 @@
 namespace BloodWatch.Api.Contracts;
 
+public sealed record CreateTokenRequest(string? Email, string? Password);
+
+public sealed record CreateTokenResponse(
+    string AccessToken,
+    string TokenType,
+    DateTime ExpiresAtUtc);
+
 public sealed record CreateSubscriptionRequest(
     string? Source,
     string? Type,
@@ -16,6 +23,8 @@ public sealed record GetSubscriptionsQuery(
     Guid? InstitutionId,
     string? Metric);
 
+public sealed record SubscriptionDeliveriesQuery(int? Limit);
+
 public sealed record SubscriptionsResponse(IReadOnlyCollection<SubscriptionResponse> Items);
 
 public sealed record SubscriptionResponse(
@@ -30,3 +39,15 @@ public sealed record SubscriptionResponse(
     bool IsEnabled,
     DateTime CreatedAtUtc,
     DateTime? DisabledAtUtc);
+
+public sealed record SubscriptionDeliveriesResponse(
+    Guid SubscriptionId,
+    IReadOnlyCollection<SubscriptionDeliveryResponse> Items);
+
+public sealed record SubscriptionDeliveryResponse(
+    Guid EventId,
+    string Status,
+    int AttemptCount,
+    string? LastError,
+    DateTime CreatedAtUtc,
+    DateTime? SentAtUtc);

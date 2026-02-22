@@ -39,3 +39,8 @@ TestResults/
 # Local env files
 .env
 .env.*
+!.env.example
+
+# Frontend
+**/node_modules/
+src/BloodWatch.Api/wwwroot/app/

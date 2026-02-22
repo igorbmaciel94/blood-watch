@@ -167,6 +167,75 @@ public sealed class DispatchEngineTests
         Assert.All(deliveries, delivery => Assert.Equal(seeded.InstitutionSubscriptionId!.Value, delivery.SubscriptionId));
     }
 
+    [Fact]
+    public async Task DispatchAsync_LegacyStoredType_ShouldDispatchWithCanonicalNotifier()
+    {
+        await using var dbContext = CreateDbContext();
+        var seeded = await SeedDispatchScopeAsync(dbContext, addInstitutionSubscription: false);
+
+        var subscription = await dbContext.Subscriptions.SingleAsync(entry => entry.Id == seeded.RegionSubscriptionId);
+        subscription.TypeKey = "discord-webhook";
+        await dbContext.SaveChangesAsync();
+
+        var notifier = new SequenceNotifier("discord:webhook", new DeliveryOutcome(DeliveryStatus.Sent));
+        var engine = CreateEngine(dbContext, notifier);
+
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
+        await dbContext.SaveChangesAsync();
+
+        Assert.Equal(1, sentCount);
+        Assert.Equal(1, notifier.CallCount);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_TransientFailure_ShouldRetryUpToMaxAttempts()
+    {
+        await using var dbContext = CreateDbContext();
+        var seeded = await SeedDispatchScopeAsync(dbContext, addInstitutionSubscription: false);
+
+        var notifier = new SequenceNotifier(
+            "discord:webhook",
+            new DeliveryOutcome(DeliveryStatus.Failed, DeliveryFailureKind.Transient),
+            new DeliveryOutcome(DeliveryStatus.Failed, DeliveryFailureKind.Transient),
+            new DeliveryOutcome(DeliveryStatus.Sent));
+        var engine = CreateEngine(dbContext, notifier);
+
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
+        await dbContext.SaveChangesAsync();
+
+        Assert.Equal(1, sentCount);
+        Assert.Equal(3, notifier.CallCount);
+
+        var delivery = await dbContext.Deliveries.SingleAsync();
+        Assert.Equal("sent", delivery.Status);
+        Assert.Equal(3, delivery.AttemptCount);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_PermanentFailure_ShouldNotRetry()
+    {
+        await using var dbContext = CreateDbContext();
+        var seeded = await SeedDispatchScopeAsync(
+            dbContext,
+            addInstitutionSubscription: false,
+            regionTypeKey: "telegram-chat");
+
+        var notifier = new SequenceNotifier(
+            "telegram:chat",
+            new DeliveryOutcome(DeliveryStatus.Failed, DeliveryFailureKind.Permanent));
+        var engine = CreateEngine(dbContext, notifier);
+
+        var sentCount = await engine.DispatchAsync([seeded.Event]);
+        await dbContext.SaveChangesAsync();
+
+        Assert.Equal(0, sentCount);
+        Assert.Equal(1, notifier.CallCount);
+
+        var delivery = await dbContext.Deliveries.SingleAsync();
+        Assert.Equal("failed", delivery.Status);
+        Assert.Equal(1, delivery.AttemptCount);
+    }
+
     private static DispatchEngine CreateEngine(BloodWatchDbContext dbContext, SequenceNotifier notifier)
     {
         return new DispatchEngine(
@@ -191,7 +260,9 @@ public sealed class DispatchEngineTests
         bool addInstitutionSubscription,
         string institutionRegionKey = "pt-norte",
         string regionMetricFilter = "blood-group-o-minus",
-        string institutionMetricFilter = "blood-group-o-minus")
+        string institutionMetricFilter = "blood-group-o-minus",
+        string regionTypeKey = "discord:webhook",
+        string institutionTypeKey = "discord:webhook")
     {
         var source = new SourceEntity
         {
@@ -256,7 +327,7 @@ public sealed class DispatchEngineTests
         {
             Id = Guid.NewGuid(),
             SourceId = source.Id,
-            TypeKey = "discord-webhook",
+            TypeKey = regionTypeKey,
             Target = "https://discord.com/api/webhooks/123/token",
             ScopeType = "region",
             RegionFilter = "pt-norte",
@@ -297,7 +368,7 @@ public sealed class DispatchEngineTests
             {
                 Id = institutionSubscriptionId.Value,
                 SourceId = source.Id,
-                TypeKey = "discord-webhook",
+                TypeKey = institutionTypeKey,
                 Target = "https://discord.com/api/webhooks/123/token",
                 ScopeType = "institution",
                 RegionFilter = null,
@@ -364,25 +435,49 @@ public sealed class DispatchEngineTests
         Guid RegionSubscriptionId,
         Guid? InstitutionSubscriptionId);
 
-    private sealed class SequenceNotifier(params DeliveryStatus[] statuses) : INotifier
-    {
-        private readonly Queue<DeliveryStatus> _statuses = new(statuses);
+    private sealed record DeliveryOutcome(
+        DeliveryStatus Status,
+        DeliveryFailureKind FailureKind = DeliveryFailureKind.None);
 
-        public string TypeKey => "discord-webhook";
+    private sealed class SequenceNotifier : INotifier
+    {
+        private readonly Queue<DeliveryOutcome> _outcomes;
+
+        public SequenceNotifier(params DeliveryStatus[] statuses)
+            : this(
+                "discord:webhook",
+                statuses
+                    .Select(status => new DeliveryOutcome(
+                        status,
+                        status == DeliveryStatus.Failed ? DeliveryFailureKind.Transient : DeliveryFailureKind.None))
+                    .ToArray())
+        {
+        }
+
+        public SequenceNotifier(string typeKey, params DeliveryOutcome[] outcomes)
+        {
+            TypeKey = typeKey;
+            _outcomes = new Queue<DeliveryOutcome>(outcomes);
+        }
+
+        public string TypeKey { get; }
         public int CallCount { get; private set; }
 
         public Task<Delivery> SendAsync(Event @event, string target, CancellationToken cancellationToken = default)
         {
             CallCount++;
-            var status = _statuses.Count > 0 ? _statuses.Dequeue() : DeliveryStatus.Failed;
+            var outcome = _outcomes.Count > 0
+                ? _outcomes.Dequeue()
+                : new DeliveryOutcome(DeliveryStatus.Failed, DeliveryFailureKind.Transient);
 
             return Task.FromResult(new Delivery(
                 TypeKey,
                 target,
-                status,
+                outcome.Status,
                 DateTime.UtcNow,
-                LastError: status == DeliveryStatus.Failed ? "send failed" : null,
-                SentAtUtc: status == DeliveryStatus.Sent ? DateTime.UtcNow : null));
+                LastError: outcome.Status == DeliveryStatus.Failed ? "send failed" : null,
+                SentAtUtc: outcome.Status == DeliveryStatus.Sent ? DateTime.UtcNow : null,
+                FailureKind: outcome.FailureKind));
         }
     }
 }

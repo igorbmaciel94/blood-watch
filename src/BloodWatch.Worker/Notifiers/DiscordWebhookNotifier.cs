@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net.Http.Json;
-using System.Text.Json;
 using BloodWatch.Core.Contracts;
 using BloodWatch.Core.Models;
 
@@ -10,7 +9,7 @@ public sealed class DiscordWebhookNotifier(
     HttpClient httpClient,
     ILogger<DiscordWebhookNotifier> logger) : INotifier
 {
-    public const string DefaultTypeKey = "discord-webhook";
+    public const string DefaultTypeKey = NotificationChannelTypeCatalog.DiscordWebhook;
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly ILogger<DiscordWebhookNotifier> _logger = logger;
@@ -53,7 +52,8 @@ public sealed class DiscordWebhookNotifier(
                 DeliveryStatus.Failed,
                 createdAtUtc,
                 LastError: errorMessage,
-                SentAtUtc: null);
+                SentAtUtc: null,
+                FailureKind: DeliveryFailureKind.Transient);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -69,149 +69,36 @@ public sealed class DiscordWebhookNotifier(
                 DeliveryStatus.Failed,
                 createdAtUtc,
                 LastError: ex.Message,
-                SentAtUtc: null);
+                SentAtUtc: null,
+                FailureKind: DeliveryFailureKind.Transient);
         }
     }
 
     private static DiscordWebhookPayload BuildWebhookPayload(Event @event)
     {
-        var payload = ParsePayload(@event.PayloadJson);
-        var template = BuildTemplate(payload, @event);
-
-        var regionLabel = @event.Region?.DisplayName ?? @event.Region?.Key ?? "Unknown region";
-        var metricLabel = ToFriendlyMetricLabel(@event.Metric.Key);
-
-        var capturedAtLabel = payload.CapturedAtUtc is not null
-            ? payload.CapturedAtUtc.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)
-            : @event.CreatedAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
+        var message = NotificationMessageFormatter.Build(@event);
 
         var fields = new[]
         {
-            new DiscordWebhookField("Blood group", metricLabel, true),
-            new DiscordWebhookField("Region", regionLabel, false),
-            new DiscordWebhookField("Current status", payload.CurrentStatusLabel ?? "Unknown", true),
-            new DiscordWebhookField("Previous status", payload.PreviousStatusLabel ?? "Unknown", true),
-            new DiscordWebhookField("Source", @event.Source.Name, false),
-            new DiscordWebhookField("Captured at", capturedAtLabel, false),
+            new DiscordWebhookField("Blood group", message.MetricLabel, true),
+            new DiscordWebhookField("Region", message.RegionLabel, false),
+            new DiscordWebhookField("Current status", message.CurrentStatusLabel, true),
+            new DiscordWebhookField("Previous status", message.PreviousStatusLabel, true),
+            new DiscordWebhookField("Change", message.ChangeSummary, false),
+            new DiscordWebhookField("Source", message.SourceLabel, false),
+            new DiscordWebhookField("Captured at", message.CapturedAtLabel, false),
         };
 
         var embed = new DiscordWebhookEmbed(
-            Title: template.Title,
-            Description: template.Description,
-            Color: template.Color,
+            Title: message.Title,
+            Description: message.Description,
+            Color: message.Color,
             Fields: fields,
             Timestamp: DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
 
         return new DiscordWebhookPayload(
-            Content: $"BloodWatch: {template.Title}",
+            Content: $"BloodWatch: {message.Title}",
             Embeds: [embed]);
-    }
-
-    private static NotificationTemplate BuildTemplate(EventPayload payload, Event @event)
-    {
-        var regionLabel = @event.Region?.DisplayName ?? @event.Region?.Key ?? "the selected region";
-        var metricLabel = ToFriendlyMetricLabel(@event.Metric.Key);
-
-        if (string.Equals(payload.Signal, "recovery", StringComparison.OrdinalIgnoreCase))
-        {
-            return new NotificationTemplate(
-                Title: "Reserve status recovered",
-                Description: $"{metricLabel} returned to normal in {regionLabel}.",
-                Color: 3066993);
-        }
-
-        if (string.Equals(payload.TransitionKind, "worsened", StringComparison.OrdinalIgnoreCase))
-        {
-            return new NotificationTemplate(
-                Title: "Reserve status worsened",
-                Description: $"{metricLabel} status worsened in {regionLabel}.",
-                Color: 15158332);
-        }
-
-        if (string.Equals(payload.TransitionKind, "non-normal-presence", StringComparison.OrdinalIgnoreCase))
-        {
-            return new NotificationTemplate(
-                Title: "Reserve status alert",
-                Description: $"{metricLabel} is currently in a non-normal status in {regionLabel}.",
-                Color: 15158332);
-        }
-
-        return new NotificationTemplate(
-            Title: "Reserve status alert",
-            Description: $"{metricLabel} entered a non-normal status in {regionLabel}.",
-            Color: 15158332);
-    }
-
-    private static EventPayload ParsePayload(string payloadJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(payloadJson);
-            var root = document.RootElement;
-
-            return new EventPayload(
-                Signal: ReadString(root, "signal"),
-                TransitionKind: ReadString(root, "transitionKind"),
-                PreviousStatusLabel: ReadString(root, "previousStatusLabel"),
-                CurrentStatusLabel: ReadString(root, "currentStatusLabel"),
-                CapturedAtUtc: ReadDateTime(root, "capturedAtUtc"));
-        }
-        catch (JsonException)
-        {
-            return new EventPayload(
-                Signal: null,
-                TransitionKind: null,
-                PreviousStatusLabel: null,
-                CurrentStatusLabel: null,
-                CapturedAtUtc: null);
-        }
-    }
-
-    private static string ToFriendlyMetricLabel(string metricKey)
-    {
-        if (string.IsNullOrWhiteSpace(metricKey))
-        {
-            return "Unknown";
-        }
-
-        var normalized = metricKey.Trim().ToLowerInvariant();
-
-        const string bloodPrefix = "blood-group-";
-        if (!normalized.StartsWith(bloodPrefix, StringComparison.Ordinal))
-        {
-            return metricKey;
-        }
-
-        var suffix = normalized[bloodPrefix.Length..]
-            .Replace("-minus", "-", StringComparison.Ordinal)
-            .Replace("-plus", "+", StringComparison.Ordinal);
-
-        return suffix.ToUpperInvariant();
-    }
-
-    private static string? ReadString(JsonElement root, string propertyName)
-    {
-        if (!root.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        return property.GetString();
-    }
-
-    private static DateTimeOffset? ReadDateTime(JsonElement root, string propertyName)
-    {
-        if (!root.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        if (DateTimeOffset.TryParse(property.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
-        {
-            return parsed;
-        }
-
-        return null;
     }
 
     private static string MaskTarget(string target)
@@ -223,15 +110,6 @@ public sealed class DiscordWebhookNotifier(
 
         return $"{uri.Scheme}://{uri.Host}/api/webhooks/***";
     }
-
-    private sealed record NotificationTemplate(string Title, string Description, int Color);
-
-    private sealed record EventPayload(
-        string? Signal,
-        string? TransitionKind,
-        string? PreviousStatusLabel,
-        string? CurrentStatusLabel,
-        DateTimeOffset? CapturedAtUtc);
 
     private sealed record DiscordWebhookPayload(string Content, IReadOnlyCollection<DiscordWebhookEmbed> Embeds);
 
