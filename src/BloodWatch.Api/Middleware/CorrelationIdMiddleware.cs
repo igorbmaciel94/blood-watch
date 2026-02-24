@@ -39,16 +39,42 @@ public sealed class CorrelationIdMiddleware(
 
     private static string ResolveCorrelationId(string? rawHeaderValue)
     {
-        if (!string.IsNullOrWhiteSpace(rawHeaderValue))
+        var sanitized = SanitizeForLogging(rawHeaderValue);
+        return string.IsNullOrEmpty(sanitized)
+            ? Guid.NewGuid().ToString("N")
+            : sanitized;
+    }
+
+    private static string SanitizeForLogging(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
         {
-            var candidate = rawHeaderValue.Trim();
-            if (candidate.Length <= 128 && candidate.All(static character => character is >= '!' and <= '~'))
-            {
-                return candidate;
-            }
+            return string.Empty;
         }
 
-        return Guid.NewGuid().ToString("N");
+        var normalized = value
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+        if (normalized.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        // Keep only printable ASCII characters to avoid control characters affecting log records.
+        var filtered = new string(normalized
+            .Where(static character => character is >= '!' and <= '~')
+            .ToArray());
+
+        if (filtered.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        return filtered.Length <= 128
+            ? filtered
+            : filtered[..128];
     }
 
     private static string NormalizeBuildValue(string? value)
