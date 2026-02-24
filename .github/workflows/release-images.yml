@@ -1,0 +1,100 @@
+name: release-images
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            image: ghcr.io/${{ github.repository_owner }}/bloodwatch-api
+            dockerfile: src/BloodWatch.Api/Dockerfile
+          - service: worker
+            image: ghcr.io/${{ github.repository_owner }}/bloodwatch-worker
+            dockerfile: src/BloodWatch.Worker/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            type=raw,value=${{ github.event.release.tag_name }}
+            type=sha,format=short,prefix=sha-
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=BloodWatch ${{ matrix.service }}
+            org.opencontainers.image.version=${{ github.event.release.tag_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.created=${{ github.event.release.published_at }}
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-production:
+    if: github.event.release.prerelease == false
+    needs:
+      - publish
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+    timeout-minutes: 25
+    concurrency:
+      group: bloodwatch-production-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Validate deploy path and script
+        env:
+          PROD_COMPOSE_DIR: ${{ vars.PROD_COMPOSE_DIR }}
+        run: |
+          set -euo pipefail
+          compose_dir="${PROD_COMPOSE_DIR:-/opt/bloodwatch/compose}"
+          if [ ! -x "${compose_dir}/scripts/deploy.sh" ]; then
+            echo "Deploy script is missing or not executable: ${compose_dir}/scripts/deploy.sh"
+            exit 1
+          fi
+
+      - name: Deploy release on self-hosted runner
+        env:
+          PROD_COMPOSE_DIR: ${{ vars.PROD_COMPOSE_DIR }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_DATE: ${{ github.event.release.published_at }}
+        run: |
+          set -euo pipefail
+          compose_dir="${PROD_COMPOSE_DIR:-/opt/bloodwatch/compose}"
+          export BloodWatch__Build__Version="${RELEASE_TAG}"
+          export BloodWatch__Build__Commit="${RELEASE_SHA}"
+          export BloodWatch__Build__Date="${RELEASE_DATE}"
+
+          "${compose_dir}/scripts/deploy.sh" "${RELEASE_TAG}"

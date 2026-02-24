@@ -9,7 +9,7 @@ This document describes the current architecture: dador/IPST ingestion, latest-s
 - `BloodWatch.Core`: Canonical contracts and models (`Snapshot`, `SnapshotItem`, `Metric`, `RegionRef`, `SourceRef`, `Event`, `Delivery`) and interfaces (`IDataSourceAdapter`, `IRule`, `INotifier`).
 - `BloodWatch.Adapters.Portugal`: Portugal adapter for `dador.pt` API (`/api/blood-reserves`, `/api/institutions`, `/api/sessions`).
 - `BloodWatch.Infrastructure`: EF Core + Npgsql persistence (`BloodWatchDbContext`), entities, and baseline migration.
-- `BloodWatch.Api`: HTTP read/write surface + health endpoint + static `/app` subscription UI + DB migration on startup.
+- `BloodWatch.Api`: HTTP read/write surface + standardized health/version endpoints + static `/app` subscription UI.
 - `BloodWatch.Worker`: Background ingestion, status transition evaluation, and dispatch pipeline.
 
 ## Runtime view
@@ -52,7 +52,7 @@ Seed data includes one source record:
   - `discord:webhook`
   - `telegram:chat`
 - Subscription write/read-by-id endpoints require `Authorization: Bearer <jwt>`.
-- Subscription health endpoint:
+- Subscription delivery health endpoint:
   - `GET /api/v1/subscriptions/{id}/deliveries?limit=N`
 - Auth endpoint for subscription writes:
   - `POST /api/v1/auth/token` (returns short-lived JWT bearer token)
@@ -63,6 +63,7 @@ Seed data includes one source record:
 
 ## Local startup behavior
 
-- Docker Compose manages `postgres`, `api`, and `worker`.
+- Docker Compose manages `postgres`, `migrator`, `api`, and `worker`.
 - `postgres` has a healthcheck (`pg_isready`) and persistent volume.
-- `api` and `worker` depend on Postgres health and run DB migration retry logic at startup.
+- `migrator` applies EF migrations as a one-shot startup step.
+- `api` and `worker` depend on Postgres health and successful migration completion.

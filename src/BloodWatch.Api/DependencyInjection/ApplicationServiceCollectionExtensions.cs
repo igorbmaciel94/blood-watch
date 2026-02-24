@@ -28,6 +28,25 @@ public static class ApplicationServiceCollectionExtensions
         services.AddOptions<JwtAuthOptions>()
             .BindConfiguration(JwtAuthOptions.SectionName);
 
+        services.AddOptions<BuildInfoOptions>()
+            .BindConfiguration(BuildInfoOptions.SectionName);
+
+        services.AddOptions<ProductionRuntimeOptions>()
+            .Configure<IConfiguration>((options, config) =>
+            {
+                options.ConnectionString = config.GetConnectionString("BloodWatch")
+                                           ?? config["BLOODWATCH_CONNECTION_STRING"];
+                options.JwtSigningKey = config["BloodWatch:JwtAuth:SigningKey"];
+                options.JwtAdminEmail = config["BloodWatch:JwtAuth:AdminEmail"];
+                options.JwtAdminPasswordHash = config["BloodWatch:JwtAuth:AdminPasswordHash"];
+                options.BuildVersion = config["BloodWatch:Build:Version"];
+                options.BuildCommit = config["BloodWatch:Build:Commit"];
+                options.BuildDate = config["BloodWatch:Build:Date"];
+            })
+            .ValidateOnStart();
+
+        services.AddSingleton<IValidateOptions<ProductionRuntimeOptions>, ProductionRuntimeOptionsValidator>();
+
         services.AddMemoryCache();
         services.AddProblemDetails();
 

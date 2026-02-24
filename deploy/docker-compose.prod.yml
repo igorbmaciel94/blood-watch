@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bloodwatch-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/bloodwatch/data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  migrator:
+    image: ${BLOODWATCH_API_IMAGE:-ghcr.io/igorbmaciel/bloodwatch-api}:${BLOODWATCH_IMAGE_TAG}
+    container_name: bloodwatch-migrator
+    command: ["dotnet", "BloodWatch.Api.dll", "migrate"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      BloodWatch__JwtAuth__Enabled: ${BloodWatch__JwtAuth__Enabled}
+      BloodWatch__JwtAuth__Issuer: ${BloodWatch__JwtAuth__Issuer}
+      BloodWatch__JwtAuth__Audience: ${BloodWatch__JwtAuth__Audience}
+      BloodWatch__JwtAuth__SigningKey: ${BloodWatch__JwtAuth__SigningKey}
+      BloodWatch__JwtAuth__AccessTokenMinutes: ${BloodWatch__JwtAuth__AccessTokenMinutes}
+      BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail}
+      BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash}
+      BloodWatch__Build__Version: ${BloodWatch__Build__Version}
+      BloodWatch__Build__Commit: ${BloodWatch__Build__Commit}
+      BloodWatch__Build__Date: ${BloodWatch__Build__Date}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ${BLOODWATCH_API_IMAGE:-ghcr.io/igorbmaciel/bloodwatch-api}:${BLOODWATCH_IMAGE_TAG}
+    container_name: bloodwatch-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      BloodWatch__JwtAuth__Enabled: ${BloodWatch__JwtAuth__Enabled}
+      BloodWatch__JwtAuth__Issuer: ${BloodWatch__JwtAuth__Issuer}
+      BloodWatch__JwtAuth__Audience: ${BloodWatch__JwtAuth__Audience}
+      BloodWatch__JwtAuth__SigningKey: ${BloodWatch__JwtAuth__SigningKey}
+      BloodWatch__JwtAuth__AccessTokenMinutes: ${BloodWatch__JwtAuth__AccessTokenMinutes}
+      BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail}
+      BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash}
+      BloodWatch__Build__Version: ${BloodWatch__Build__Version}
+      BloodWatch__Build__Commit: ${BloodWatch__Build__Commit}
+      BloodWatch__Build__Date: ${BloodWatch__Build__Date}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/live > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    image: ${BLOODWATCH_WORKER_IMAGE:-ghcr.io/igorbmaciel/bloodwatch-worker}:${BLOODWATCH_IMAGE_TAG}
+    container_name: bloodwatch-worker
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8081
+      ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      BLOODWATCH__TELEGRAM_BOT_TOKEN: ${BLOODWATCH__TELEGRAM_BOT_TOKEN}
+      BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS: ${BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS}
+      BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS: ${BLOODWATCH__DISCORD_WEBHOOK_TIMEOUT_SECONDS}
+      BloodWatch__Build__Version: ${BloodWatch__Build__Version}
+      BloodWatch__Build__Commit: ${BloodWatch__Build__Commit}
+      BloodWatch__Build__Date: ${BloodWatch__Build__Date}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/health/live > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: bloodwatch-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/bloodwatch/data/caddy/data:/data
+      - /opt/bloodwatch/data/caddy/config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

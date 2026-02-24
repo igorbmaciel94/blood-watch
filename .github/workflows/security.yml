@@ -46,9 +46,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          db_connection_string="$(jq -r '.ConnectionStrings.BloodWatch // ""' src/BloodWatch.Api/appsettings.json)"
+          if [ -n "$db_connection_string" ]; then
+            echo "appsettings.json must not contain a committed ConnectionStrings.BloodWatch value."
+            exit 1
+          fi
+
           signing_key="$(jq -r '.BloodWatch.JwtAuth.SigningKey // ""' src/BloodWatch.Api/appsettings.json)"
           if [ -n "$signing_key" ]; then
             echo "appsettings.json must not contain a committed JWT signing key."
+            exit 1
+          fi
+
+          admin_email="$(jq -r '.BloodWatch.JwtAuth.AdminEmail // ""' src/BloodWatch.Api/appsettings.json)"
+          if [ -n "$admin_email" ]; then
+            echo "appsettings.json must not contain a committed JWT admin email."
             exit 1
           fi
 
@@ -67,5 +79,47 @@ jobs:
           compose_admin_hash="$(awk -F': ' '/BloodWatch__JwtAuth__AdminPasswordHash:/ {print $2; exit}' docker-compose.yml | tr -d '"\r')"
           if [ -n "$compose_admin_hash" ] && [[ "$compose_admin_hash" != *'${'* ]]; then
             echo "docker-compose.yml must not contain a raw BloodWatch__JwtAuth__AdminPasswordHash value."
+            exit 1
+          fi
+
+          prod_compose_signing_key="$(awk -F': ' '/BloodWatch__JwtAuth__SigningKey:/ {print $2; exit}' deploy/docker-compose.prod.yml | tr -d '"\r')"
+          if [ -n "$prod_compose_signing_key" ] && [[ "$prod_compose_signing_key" != *'${'* ]]; then
+            echo "deploy/docker-compose.prod.yml must not contain a raw BloodWatch__JwtAuth__SigningKey value."
+            exit 1
+          fi
+
+          prod_compose_admin_hash="$(awk -F': ' '/BloodWatch__JwtAuth__AdminPasswordHash:/ {print $2; exit}' deploy/docker-compose.prod.yml | tr -d '"\r')"
+          if [ -n "$prod_compose_admin_hash" ] && [[ "$prod_compose_admin_hash" != *'${'* ]]; then
+            echo "deploy/docker-compose.prod.yml must not contain a raw BloodWatch__JwtAuth__AdminPasswordHash value."
+            exit 1
+          fi
+
+          env_example_signing_key="$(awk -F'=' '/^BloodWatch__JwtAuth__SigningKey=/ {print $2; exit}' .env.example | tr -d '\r')"
+          if [ -n "$env_example_signing_key" ]; then
+            echo ".env.example must not contain a raw BloodWatch__JwtAuth__SigningKey value."
+            exit 1
+          fi
+
+          env_example_connection_string="$(awk -F'=' '/^ConnectionStrings__BloodWatch=/ {print $2; exit}' .env.example | tr -d '\r')"
+          if [ -n "$env_example_connection_string" ]; then
+            echo ".env.example must not contain a raw ConnectionStrings__BloodWatch value."
+            exit 1
+          fi
+
+          env_example_admin_hash="$(awk -F'=' '/^BloodWatch__JwtAuth__AdminPasswordHash=/ {print $2; exit}' .env.example | tr -d '\r')"
+          if [ -n "$env_example_admin_hash" ]; then
+            echo ".env.example must not contain a raw BloodWatch__JwtAuth__AdminPasswordHash value."
+            exit 1
+          fi
+
+          env_example_postgres_password="$(awk -F'=' '/^POSTGRES_PASSWORD=/ {print $2; exit}' .env.example | tr -d '\r')"
+          if [ -n "$env_example_postgres_password" ]; then
+            echo ".env.example must not contain a raw POSTGRES_PASSWORD value."
+            exit 1
+          fi
+
+          env_example_telegram_token="$(awk -F'=' '/^BLOODWATCH__TELEGRAM_BOT_TOKEN=/ {print $2; exit}' .env.example | tr -d '\r')"
+          if [ -n "$env_example_telegram_token" ]; then
+            echo ".env.example must not contain a raw BLOODWATCH__TELEGRAM_BOT_TOKEN value."
             exit 1
           fi

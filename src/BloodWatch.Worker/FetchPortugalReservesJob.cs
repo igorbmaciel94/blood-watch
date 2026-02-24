@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using BloodWatch.Adapters.Portugal;
@@ -36,6 +37,8 @@ public sealed class FetchPortugalReservesJob(
 
     public async Task<FetchPortugalReservesResult> ExecuteAsync(CancellationToken cancellationToken = default)
     {
+        var ingestStopwatch = Stopwatch.StartNew();
+
         var adapter = _adapters.FirstOrDefault(candidate => candidate.AdapterKey == PortugalAdapter.DefaultAdapterKey)
             ?? throw new InvalidOperationException($"No adapter registered for {PortugalAdapter.DefaultAdapterKey}.");
 
@@ -161,12 +164,32 @@ public sealed class FetchPortugalReservesJob(
             regionById,
             snapshot.SourceUpdatedAtUtc);
 
+        ingestStopwatch.Stop();
+        _logger.LogInformation(
+            "Ingest stage completed in {DurationMs}ms. InsertedCurrentReserves: {InsertedCurrentReserves}; UpdatedCurrentReserves: {UpdatedCurrentReserves}; CarriedForwardCurrentReserves: {CarriedForwardCurrentReserves}; UpsertedInstitutions: {UpsertedInstitutions}; UpsertedSessions: {UpsertedSessions}.",
+            ingestStopwatch.ElapsedMilliseconds,
+            insertedCount,
+            updatedCount,
+            carriedForwardCount,
+            upsertedInstitutions,
+            upsertedSessions);
+
+        var rulesStopwatch = Stopwatch.StartNew();
         var transitionEvents = await EvaluateRulesAsync(previousSnapshot, currentSnapshot, cancellationToken);
         var statusPresenceEvents = CreateStatusPresenceEvents(currentSnapshot, polledAtUtc);
         var generatedEvents = transitionEvents
             .Concat(statusPresenceEvents)
             .ToArray();
+        rulesStopwatch.Stop();
 
+        _logger.LogInformation(
+            "Rules stage completed in {DurationMs}ms. TransitionEvents: {TransitionEvents}; StatusPresenceEvents: {StatusPresenceEvents}; GeneratedEvents: {GeneratedEvents}.",
+            rulesStopwatch.ElapsedMilliseconds,
+            transitionEvents.Count,
+            statusPresenceEvents.Count,
+            generatedEvents.Length);
+
+        var dispatchStopwatch = Stopwatch.StartNew();
         var insertedEvents = await PersistEventsAsync(
             source.Id,
             generatedEvents,
@@ -187,16 +210,19 @@ public sealed class FetchPortugalReservesJob(
             .Select(group => group.First())
             .ToArray();
 
+        var sentCount = 0;
         if (dispatchEvents.Length > 0)
         {
-            var sentCount = await _dispatchEngine.DispatchAsync(dispatchEvents, cancellationToken);
+            sentCount = await _dispatchEngine.DispatchAsync(dispatchEvents, cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation(
-                "Dispatched {SentCount} deliveries for {EventCount} dispatch candidate events.",
-                sentCount,
-                dispatchEvents.Length);
         }
+
+        dispatchStopwatch.Stop();
+        _logger.LogInformation(
+            "Dispatch stage completed in {DurationMs}ms. DispatchCandidates: {DispatchCandidates}; SentDeliveries: {SentDeliveries}.",
+            dispatchStopwatch.ElapsedMilliseconds,
+            dispatchEvents.Length,
+            sentCount);
 
         return new FetchPortugalReservesResult(
             insertedCount,
@@ -204,6 +230,12 @@ public sealed class FetchPortugalReservesJob(
             carriedForwardCount,
             upsertedInstitutions,
             upsertedSessions,
+            generatedEvents.Length,
+            dispatchEvents.Length,
+            sentCount,
+            ingestStopwatch.ElapsedMilliseconds,
+            rulesStopwatch.ElapsedMilliseconds,
+            dispatchStopwatch.ElapsedMilliseconds,
             polledAtUtc);
     }
 

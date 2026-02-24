@@ -19,7 +19,37 @@ public sealed class PublicReadApiEndpointsTests
     private const string SourceName = "Portugal Dador/IPST";
 
     [Fact]
-    public async Task GetHealth_ShouldReturnHealthy()
+    public async Task GetHealthLive_ShouldReturnLive()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/health/live");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<HealthResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal("live", payload!.Status);
+    }
+
+    [Fact]
+    public async Task GetHealthReady_ShouldReturnReady()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/health/ready");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<HealthResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal("ready", payload!.Status);
+    }
+
+    [Fact]
+    public async Task GetHealth_ShouldReturnReady()
     {
         await using var factory = CreateFactory();
         await SeedAllAsync(factory);
@@ -30,7 +60,40 @@ public sealed class PublicReadApiEndpointsTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<HealthResponse>();
         Assert.NotNull(payload);
-        Assert.Equal("healthy", payload!.Status);
+        Assert.Equal("ready", payload!.Status);
+    }
+
+    [Fact]
+    public async Task GetVersion_ShouldReturnBuildMetadata()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/version");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<VersionResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal("test-version", payload!.Version);
+        Assert.Equal("test-commit", payload.Commit);
+        Assert.Equal("2026-02-24T00:00:00Z", payload.BuildDate);
+    }
+
+    [Fact]
+    public async Task HealthRequest_WithCorrelationHeader_ShouldEchoHeader()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+        const string correlationId = "test-correlation-123";
+        client.DefaultRequestHeaders.Add("X-Correlation-Id", correlationId);
+
+        using var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.TryGetValues("X-Correlation-Id", out var values));
+        Assert.Equal(correlationId, values.Single());
     }
 
     [Fact]
@@ -309,6 +372,7 @@ public sealed class PublicReadApiEndpointsTests
     private sealed record SeededData(Guid CenterAId, Guid CenterBId);
 
     private sealed record HealthResponse(string Status);
+    private sealed record VersionResponse(string Version, string Commit, string BuildDate);
 
     private sealed class ApiWebApplicationFactory(IReadOnlyDictionary<string, string?>? overrides)
         : WebApplicationFactory<Program>
@@ -332,6 +396,9 @@ public sealed class PublicReadApiEndpointsTests
                     ["BloodWatch:Api:Caching:LatestTtlSeconds"] = "60",
                     ["BloodWatch:Api:RateLimiting:PermitLimitPerMinute"] = "1000",
                     ["BloodWatch:Api:RateLimiting:QueueLimit"] = "0",
+                    ["BloodWatch:Build:Version"] = "test-version",
+                    ["BloodWatch:Build:Commit"] = "test-commit",
+                    ["BloodWatch:Build:Date"] = "2026-02-24T00:00:00Z",
                 };
 
                 if (overrides is not null)

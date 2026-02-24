@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using BloodWatch.Core.Contracts;
 using BloodWatch.Core.Models;
 using BloodWatch.Infrastructure.Persistence;
@@ -26,8 +27,10 @@ public sealed class DispatchEngine(
         IReadOnlyCollection<EventEntity> events,
         CancellationToken cancellationToken = default)
     {
+        var dispatchStopwatch = Stopwatch.StartNew();
         if (events.Count == 0)
         {
+            _logger.LogInformation("Dispatch skipped because there are no candidate events.");
             return 0;
         }
 
@@ -170,6 +173,13 @@ public sealed class DispatchEngine(
                 }
             }
         }
+
+        dispatchStopwatch.Stop();
+        _logger.LogInformation(
+            "Dispatch engine finished in {DurationMs}ms for {EventCount} candidate events and {SentCount} sent deliveries.",
+            dispatchStopwatch.ElapsedMilliseconds,
+            events.Count,
+            sentCount);
 
         return sentCount;
     }
