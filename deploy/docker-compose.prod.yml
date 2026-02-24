@@ -19,7 +19,7 @@ services:
   migrator:
     image: ${BLOODWATCH_API_IMAGE:-ghcr.io/igorbmaciel/bloodwatch-api}:${BLOODWATCH_IMAGE_TAG}
     container_name: bloodwatch-migrator
-    command: ["dotnet", "BloodWatch.Api.dll", "migrate"]
+    command: ["migrate"]
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}

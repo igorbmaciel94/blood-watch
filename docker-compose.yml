@@ -22,7 +22,7 @@ services:
       context: .
       dockerfile: src/BloodWatch.Api/Dockerfile
     container_name: bloodwatch-migrator
-    command: ["dotnet", "BloodWatch.Api.dll", "migrate"]
+    command: ["migrate"]
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=bloodwatch;Username=bloodwatch;Password=bloodwatch
