@@ -16,8 +16,12 @@ RUN dotnet publish "BloodWatch.Worker.csproj" -c Release -o /app/publish /p:UseA
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV ASPNETCORE_URLS=http://+:8081
 EXPOSE 8081
+USER 10001:10001
 
 ENTRYPOINT ["dotnet", "BloodWatch.Worker.dll"]

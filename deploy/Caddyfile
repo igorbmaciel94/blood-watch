@@ -1,0 +1,22 @@
+{
+	email {$CADDY_EMAIL}
+}
+
+bloodwatch.lighthousedev.uk {
+	encode zstd gzip
+	reverse_proxy api:8080
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+lighthousedev.uk, www.lighthousedev.uk {
+	redir https://bloodwatch.lighthousedev.uk{uri} permanent
+
+	log {
+		output stdout
+		format json
+	}
+}

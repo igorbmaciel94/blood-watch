@@ -17,6 +17,30 @@ services:
       retries: 12
       start_period: 5s
 
+  migrator:
+    build:
+      context: .
+      dockerfile: src/BloodWatch.Api/Dockerfile
+    container_name: bloodwatch-migrator
+    command: ["dotnet", "BloodWatch.Api.dll", "migrate"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=bloodwatch;Username=bloodwatch;Password=bloodwatch
+      BloodWatch__Build__Version: ${BloodWatch__Build__Version:-dev}
+      BloodWatch__Build__Commit: ${BloodWatch__Build__Commit:-local}
+      BloodWatch__Build__Date: ${BloodWatch__Build__Date:-1970-01-01T00:00:00Z}
+      BloodWatch__JwtAuth__Enabled: ${BloodWatch__JwtAuth__Enabled:-true}
+      BloodWatch__JwtAuth__Issuer: ${BloodWatch__JwtAuth__Issuer:-bloodwatch-api}
+      BloodWatch__JwtAuth__Audience: ${BloodWatch__JwtAuth__Audience:-bloodwatch-clients}
+      BloodWatch__JwtAuth__SigningKey: ${BloodWatch__JwtAuth__SigningKey:-}
+      BloodWatch__JwtAuth__AccessTokenMinutes: ${BloodWatch__JwtAuth__AccessTokenMinutes:-15}
+      BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail:-admin@example.com}
+      BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build:
       context: .
@@ -30,13 +54,24 @@ services:
       BloodWatch__JwtAuth__Audience: ${BloodWatch__JwtAuth__Audience:-bloodwatch-clients}
       BloodWatch__JwtAuth__SigningKey: ${BloodWatch__JwtAuth__SigningKey:-}
       BloodWatch__JwtAuth__AccessTokenMinutes: ${BloodWatch__JwtAuth__AccessTokenMinutes:-15}
-      BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail:-igorbmaciel@yahoo.com.br}
+      BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail:-admin@example.com}
       BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash:-}
+      BloodWatch__Build__Version: ${BloodWatch__Build__Version:-dev}
+      BloodWatch__Build__Commit: ${BloodWatch__Build__Commit:-local}
+      BloodWatch__Build__Date: ${BloodWatch__Build__Date:-1970-01-01T00:00:00Z}
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/live > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     restart: unless-stopped
 
   worker:
@@ -50,11 +85,22 @@ services:
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=bloodwatch;Username=bloodwatch;Password=bloodwatch
       BLOODWATCH__TELEGRAM_BOT_TOKEN: ${BLOODWATCH__TELEGRAM_BOT_TOKEN:-}
       BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS: ${BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS:-10}
+      BloodWatch__Build__Version: ${BloodWatch__Build__Version:-dev}
+      BloodWatch__Build__Commit: ${BloodWatch__Build__Commit:-local}
+      BloodWatch__Build__Date: ${BloodWatch__Build__Date:-1970-01-01T00:00:00Z}
     ports:
       - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/health/live > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     restart: unless-stopped
 
   pgadmin:

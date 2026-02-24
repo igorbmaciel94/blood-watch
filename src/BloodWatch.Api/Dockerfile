@@ -2,7 +2,8 @@ FROM node:20-alpine AS ui-build
 WORKDIR /ui
 
 COPY ["src/BloodWatch.Api/ui/package.json", "./"]
-RUN npm install
+COPY ["src/BloodWatch.Api/ui/package-lock.json", "./"]
+RUN npm ci --no-audit --no-fund
 
 COPY ["src/BloodWatch.Api/ui/", "./"]
 RUN npm run build
@@ -26,8 +27,12 @@ RUN dotnet publish "BloodWatch.Api.csproj" -c Release -o /app/publish /p:UseAppH
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+USER 10001:10001
 
 ENTRYPOINT ["dotnet", "BloodWatch.Api.dll"]

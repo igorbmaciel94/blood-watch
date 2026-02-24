@@ -21,8 +21,13 @@ public static class ApplicationServiceCollectionExtensions
         }
 
         var connectionString = configuration.GetConnectionString("BloodWatch")
-            ?? Environment.GetEnvironmentVariable("BLOODWATCH_CONNECTION_STRING")
-            ?? "Host=localhost;Port=5432;Database=bloodwatch;Username=bloodwatch;Password=bloodwatch";
+            ?? Environment.GetEnvironmentVariable("BLOODWATCH_CONNECTION_STRING");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Missing BloodWatch database connection string. Configure ConnectionStrings__BloodWatch (or BLOODWATCH_CONNECTION_STRING).");
+        }
 
         services.AddDbContext<BloodWatchDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
