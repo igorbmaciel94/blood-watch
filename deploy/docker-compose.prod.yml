@@ -73,6 +73,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8081
+      BloodWatch__Worker__FetchPortugalReserves__IntervalMinutes: ${BloodWatch__Worker__FetchPortugalReserves__IntervalMinutes:-10}
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       BLOODWATCH__TELEGRAM_BOT_TOKEN: ${BLOODWATCH__TELEGRAM_BOT_TOKEN}
       BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS: ${BLOODWATCH__TELEGRAM_TIMEOUT_SECONDS}
