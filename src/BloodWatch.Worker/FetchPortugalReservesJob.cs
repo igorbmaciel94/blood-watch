@@ -68,6 +68,7 @@ public sealed class FetchPortugalReservesJob(
             region => new RegionRef(region.Key, region.DisplayName));
 
         var incomingByKey = BuildIncomingReserves(snapshot, regionIdByKey);
+        var effectiveReferenceDate = snapshot.ReferenceDate ?? DateOnly.FromDateTime(snapshot.CapturedAtUtc);
 
         var existingRows = await _dbContext.CurrentReserves
             .Where(entry => entry.SourceId == source.Id)
@@ -92,6 +93,7 @@ public sealed class FetchPortugalReservesJob(
         var insertedCount = 0;
         var updatedCount = 0;
         var matchedExistingCount = 0;
+        var pendingHistory = new List<PendingHistoryObservation>();
 
         var currentByKey = new Dictionary<CurrentReserveKey, CurrentReserveEntity>(existingByKey);
 
@@ -100,12 +102,30 @@ public sealed class FetchPortugalReservesJob(
             if (existingByKey.TryGetValue(incoming.Key, out var existing))
             {
                 matchedExistingCount++;
+
+                var previousStatusKey = ReserveStatusCatalog.NormalizeKey(existing.StatusKey);
+                var hasReferenceDateChanged = existing.ReferenceDate != effectiveReferenceDate;
+                var hasStatusChanged = !string.Equals(previousStatusKey, incoming.StatusKey, StringComparison.Ordinal);
+
                 existing.StatusKey = incoming.StatusKey;
                 existing.StatusLabel = incoming.StatusLabel;
-                existing.ReferenceDate = snapshot.ReferenceDate;
+                existing.ReferenceDate = effectiveReferenceDate;
                 existing.CapturedAtUtc = snapshot.CapturedAtUtc;
                 existing.UpdatedAtUtc = polledAtUtc;
                 updatedCount++;
+
+                if (hasReferenceDateChanged || hasStatusChanged)
+                {
+                    pendingHistory.Add(new PendingHistoryObservation(
+                        source.Id,
+                        incoming.Key.RegionId,
+                        incoming.Key.MetricKey,
+                        incoming.StatusKey,
+                        (short)ReserveStatusCatalog.GetRank(incoming.StatusKey),
+                        effectiveReferenceDate,
+                        snapshot.CapturedAtUtc));
+                }
+
                 continue;
             }
 
@@ -117,15 +137,27 @@ public sealed class FetchPortugalReservesJob(
                 MetricKey = incoming.Key.MetricKey,
                 StatusKey = incoming.StatusKey,
                 StatusLabel = incoming.StatusLabel,
-                ReferenceDate = snapshot.ReferenceDate,
+                ReferenceDate = effectiveReferenceDate,
                 CapturedAtUtc = snapshot.CapturedAtUtc,
                 UpdatedAtUtc = polledAtUtc,
             };
 
             _dbContext.CurrentReserves.Add(entity);
             currentByKey[incoming.Key] = entity;
+
+            pendingHistory.Add(new PendingHistoryObservation(
+                source.Id,
+                incoming.Key.RegionId,
+                incoming.Key.MetricKey,
+                incoming.StatusKey,
+                (short)ReserveStatusCatalog.GetRank(incoming.StatusKey),
+                effectiveReferenceDate,
+                snapshot.CapturedAtUtc));
+
             insertedCount++;
         }
+
+        await PersistReserveHistoryObservationsAsync(pendingHistory, cancellationToken);
 
         var carriedForwardCount = Math.Max(0, existingByKey.Count - matchedExistingCount);
 
@@ -159,7 +191,7 @@ public sealed class FetchPortugalReservesJob(
         var currentSnapshot = BuildSnapshot(
             snapshot.Source,
             snapshot.CapturedAtUtc,
-            snapshot.ReferenceDate,
+            effectiveReferenceDate,
             currentRows,
             regionById,
             snapshot.SourceUpdatedAtUtc);
@@ -597,6 +629,80 @@ public sealed class FetchPortugalReservesJob(
         return upsertedCount;
     }
 
+    private async Task PersistReserveHistoryObservationsAsync(
+        IReadOnlyCollection<PendingHistoryObservation> pendingHistory,
+        CancellationToken cancellationToken)
+    {
+        if (pendingHistory.Count == 0)
+        {
+            return;
+        }
+
+        var uniquePending = pendingHistory
+            .GroupBy(entry => new HistoryObservationKey(
+                entry.SourceId,
+                entry.RegionId,
+                entry.MetricKey,
+                entry.ReferenceDate,
+                entry.StatusKey))
+            .Select(group => group.First())
+            .ToArray();
+
+        if (uniquePending.Length == 0)
+        {
+            return;
+        }
+
+        var candidateSourceIds = uniquePending.Select(entry => entry.SourceId).Distinct().ToArray();
+        var candidateRegionIds = uniquePending.Select(entry => entry.RegionId).Distinct().ToArray();
+        var candidateMetricKeys = uniquePending.Select(entry => entry.MetricKey).Distinct(StringComparer.Ordinal).ToArray();
+        var candidateReferenceDates = uniquePending.Select(entry => entry.ReferenceDate).Distinct().ToArray();
+        var candidateStatusKeys = uniquePending.Select(entry => entry.StatusKey).Distinct(StringComparer.Ordinal).ToArray();
+
+        var existingKeys = await _dbContext.ReserveHistoryObservations
+            .AsNoTracking()
+            .Where(entry =>
+                candidateSourceIds.Contains(entry.SourceId)
+                && candidateRegionIds.Contains(entry.RegionId)
+                && candidateMetricKeys.Contains(entry.MetricKey)
+                && candidateReferenceDates.Contains(entry.ReferenceDate)
+                && candidateStatusKeys.Contains(entry.StatusKey))
+            .Select(entry => new HistoryObservationKey(
+                entry.SourceId,
+                entry.RegionId,
+                entry.MetricKey,
+                entry.ReferenceDate,
+                entry.StatusKey))
+            .ToListAsync(cancellationToken);
+
+        var existingKeySet = existingKeys.ToHashSet();
+        foreach (var pending in uniquePending)
+        {
+            var key = new HistoryObservationKey(
+                pending.SourceId,
+                pending.RegionId,
+                pending.MetricKey,
+                pending.ReferenceDate,
+                pending.StatusKey);
+
+            if (existingKeySet.Contains(key))
+            {
+                continue;
+            }
+
+            _dbContext.ReserveHistoryObservations.Add(new ReserveHistoryObservationEntity
+            {
+                SourceId = pending.SourceId,
+                RegionId = pending.RegionId,
+                MetricKey = pending.MetricKey,
+                StatusKey = pending.StatusKey,
+                StatusRank = pending.StatusRank,
+                ReferenceDate = pending.ReferenceDate,
+                CapturedAtUtc = pending.CapturedAtUtc,
+            });
+        }
+    }
+
     private async Task<IReadOnlyCollection<Event>> EvaluateRulesAsync(
         Snapshot? previousSnapshot,
         Snapshot currentSnapshot,
@@ -840,6 +946,22 @@ public sealed class FetchPortugalReservesJob(
     }
 
     private sealed record PendingEvent(Event Event, string IdempotencyKey, Guid RegionId, Guid CurrentReserveId);
+
+    private sealed record HistoryObservationKey(
+        Guid SourceId,
+        Guid RegionId,
+        string MetricKey,
+        DateOnly ReferenceDate,
+        string StatusKey);
+
+    private sealed record PendingHistoryObservation(
+        Guid SourceId,
+        Guid RegionId,
+        string MetricKey,
+        string StatusKey,
+        short StatusRank,
+        DateOnly ReferenceDate,
+        DateTime CapturedAtUtc);
 
     private sealed record IdempotencySeed(
         string Signal,

@@ -10,6 +10,7 @@ public sealed class SourceEntity
 
     public ICollection<RegionEntity> Regions { get; set; } = [];
     public ICollection<CurrentReserveEntity> CurrentReserves { get; set; } = [];
+    public ICollection<ReserveHistoryObservationEntity> ReserveHistoryObservations { get; set; } = [];
     public ICollection<DonationCenterEntity> DonationCenters { get; set; } = [];
     public ICollection<CollectionSessionEntity> CollectionSessions { get; set; } = [];
     public ICollection<SubscriptionEntity> Subscriptions { get; set; } = [];

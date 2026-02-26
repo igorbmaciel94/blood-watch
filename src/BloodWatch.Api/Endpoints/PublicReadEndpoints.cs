@@ -1,5 +1,6 @@
 using BloodWatch.Api.Contracts;
 using BloodWatch.Api.Options;
+using BloodWatch.Api.Services;
 using BloodWatch.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +37,42 @@ public static class PublicReadEndpoints
             .WithName("GetLatestReserves")
             .WithSummary("Read latest reserve statuses for a source with optional region and metric filters.")
             .Produces<LatestReservesResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .WithOpenApi();
+
+        group.MapGet("/analytics/reserves/deltas", GetReserveDeltasAsync)
+            .WithName("GetReserveDeltas")
+            .WithSummary("List reserve status deltas versus the previous reference date.")
+            .Produces<ReserveDeltasResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .WithOpenApi();
+
+        group.MapGet("/analytics/reserves/top-downgrades", GetTopDowngradesAsync)
+            .WithName("GetTopDowngrades")
+            .WithSummary("Rank centers with the most status downgrades in the configured week window.")
+            .Produces<TopDowngradesResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .WithOpenApi();
+
+        group.MapGet("/analytics/reserves/time-in-status", GetTimeInStatusAsync)
+            .WithName("GetTimeInStatus")
+            .WithSummary("Summarize time spent in watch, warning, and critical statuses by center and metric.")
+            .Produces<TimeInStatusResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .WithOpenApi();
+
+        group.MapGet("/analytics/reserves/unstable-metrics", GetUnstableMetricsAsync)
+            .WithName("GetUnstableMetrics")
+            .WithSummary("Rank region metrics by status transition count in the configured week window.")
+            .Produces<UnstableMetricsResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
@@ -224,6 +261,148 @@ public static class PublicReadEndpoints
 
         var ttlSeconds = Math.Clamp(cachingOptions.Value.LatestTtlSeconds, 1, 86_400);
         memoryCache.Set(cacheKey, response, TimeSpan.FromSeconds(ttlSeconds));
+
+        return TypedResults.Ok(response);
+    }
+
+    private static async Task<IResult> GetReserveDeltasAsync(
+        [AsParameters] ReserveDeltasQuery query,
+        BloodWatchDbContext dbContext,
+        IReserveAnalyticsQueryService analyticsQueryService,
+        CancellationToken cancellationToken)
+    {
+        var sourceKey = NormalizeRequired(query.Source);
+        if (sourceKey is null)
+        {
+            return CreateBadRequestProblem("Query parameter 'source' is required.");
+        }
+
+        var source = await FindSourceAsync(sourceKey, dbContext, cancellationToken);
+        if (source is null)
+        {
+            return CreateNotFoundProblem($"Source '{sourceKey}' was not found.");
+        }
+
+        var limit = Math.Clamp(query.Limit ?? 200, 1, 1_000);
+        var response = await analyticsQueryService.GetReserveDeltasAsync(
+            source.Id,
+            source.AdapterKey,
+            limit,
+            cancellationToken);
+
+        if (response is null)
+        {
+            return CreateNotFoundProblem(
+                $"Source '{source.AdapterKey}' needs at least two distinct reference_date snapshots for delta analytics.");
+        }
+
+        return TypedResults.Ok(response);
+    }
+
+    private static async Task<IResult> GetTopDowngradesAsync(
+        [AsParameters] TopDowngradesQuery query,
+        BloodWatchDbContext dbContext,
+        IReserveAnalyticsQueryService analyticsQueryService,
+        CancellationToken cancellationToken)
+    {
+        var sourceKey = NormalizeRequired(query.Source);
+        if (sourceKey is null)
+        {
+            return CreateBadRequestProblem("Query parameter 'source' is required.");
+        }
+
+        var source = await FindSourceAsync(sourceKey, dbContext, cancellationToken);
+        if (source is null)
+        {
+            return CreateNotFoundProblem($"Source '{sourceKey}' was not found.");
+        }
+
+        var weeks = Math.Clamp(query.Weeks ?? 8, 1, 104);
+        var limit = Math.Clamp(query.Limit ?? 20, 1, 200);
+
+        var response = await analyticsQueryService.GetTopDowngradesAsync(
+            source.Id,
+            source.AdapterKey,
+            weeks,
+            limit,
+            cancellationToken);
+
+        if (response is null)
+        {
+            return CreateNotFoundProblem($"Source '{source.AdapterKey}' has no history available for analytics.");
+        }
+
+        return TypedResults.Ok(response);
+    }
+
+    private static async Task<IResult> GetTimeInStatusAsync(
+        [AsParameters] TimeInStatusQuery query,
+        BloodWatchDbContext dbContext,
+        IReserveAnalyticsQueryService analyticsQueryService,
+        CancellationToken cancellationToken)
+    {
+        var sourceKey = NormalizeRequired(query.Source);
+        if (sourceKey is null)
+        {
+            return CreateBadRequestProblem("Query parameter 'source' is required.");
+        }
+
+        var source = await FindSourceAsync(sourceKey, dbContext, cancellationToken);
+        if (source is null)
+        {
+            return CreateNotFoundProblem($"Source '{sourceKey}' was not found.");
+        }
+
+        var weeks = Math.Clamp(query.Weeks ?? 8, 1, 104);
+        var limit = Math.Clamp(query.Limit ?? 200, 1, 2_000);
+
+        var response = await analyticsQueryService.GetTimeInStatusAsync(
+            source.Id,
+            source.AdapterKey,
+            weeks,
+            limit,
+            cancellationToken);
+
+        if (response is null)
+        {
+            return CreateNotFoundProblem($"Source '{source.AdapterKey}' has no history available for analytics.");
+        }
+
+        return TypedResults.Ok(response);
+    }
+
+    private static async Task<IResult> GetUnstableMetricsAsync(
+        [AsParameters] UnstableMetricsQuery query,
+        BloodWatchDbContext dbContext,
+        IReserveAnalyticsQueryService analyticsQueryService,
+        CancellationToken cancellationToken)
+    {
+        var sourceKey = NormalizeRequired(query.Source);
+        if (sourceKey is null)
+        {
+            return CreateBadRequestProblem("Query parameter 'source' is required.");
+        }
+
+        var source = await FindSourceAsync(sourceKey, dbContext, cancellationToken);
+        if (source is null)
+        {
+            return CreateNotFoundProblem($"Source '{sourceKey}' was not found.");
+        }
+
+        var weeks = Math.Clamp(query.Weeks ?? 8, 1, 104);
+        var limit = Math.Clamp(query.Limit ?? 200, 1, 2_000);
+
+        var response = await analyticsQueryService.GetUnstableMetricsAsync(
+            source.Id,
+            source.AdapterKey,
+            weeks,
+            limit,
+            cancellationToken);
+
+        if (response is null)
+        {
+            return CreateNotFoundProblem($"Source '{source.AdapterKey}' has no history available for analytics.");
+        }
 
         return TypedResults.Ok(response);
     }

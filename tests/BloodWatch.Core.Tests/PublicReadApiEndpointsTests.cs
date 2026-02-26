@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using BloodWatch.Api.Contracts;
 using BloodWatch.Infrastructure.Persistence;
 using BloodWatch.Infrastructure.Persistence.Entities;
@@ -189,6 +190,127 @@ public sealed class PublicReadApiEndpointsTests
     }
 
     [Fact]
+    public async Task GetReserveDeltas_ShouldReturnChangesSincePreviousReferenceDate()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync($"/api/v1/analytics/reserves/deltas?source={SourceKey}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<ReserveDeltasResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal(new DateOnly(2026, 3, 2), payload!.CurrentReferenceDate);
+        Assert.Equal(new DateOnly(2026, 2, 24), payload.PreviousReferenceDate);
+
+        var item = Assert.Single(payload.Items, entry =>
+            entry.Region.Key == "pt-norte"
+            && entry.Metric == "blood-group-o-minus");
+
+        Assert.Equal("warning", item.PreviousStatusKey);
+        Assert.Equal("critical", item.CurrentStatusKey);
+        Assert.Equal((short)1, item.RankDelta);
+    }
+
+    [Fact]
+    public async Task GetTopDowngrades_ShouldReturnDescendingRanking()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(
+            $"/api/v1/analytics/reserves/top-downgrades?source={SourceKey}&weeks=3&limit=5");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<TopDowngradesResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal(3, payload!.Weeks);
+        Assert.NotEmpty(payload.Items);
+
+        var items = payload.Items.ToArray();
+        Assert.Equal("pt-norte", items[0].Region.Key);
+        Assert.True(items[0].Downgrades >= items[^1].Downgrades);
+    }
+
+    [Fact]
+    public async Task GetTimeInStatus_ShouldSummarizeWeeksByRegionAndMetric()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(
+            $"/api/v1/analytics/reserves/time-in-status?source={SourceKey}&weeks=3&limit=20");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<TimeInStatusResponse>();
+        Assert.NotNull(payload);
+
+        var item = Assert.Single(payload!.Items, entry =>
+            entry.Region.Key == "pt-norte"
+            && entry.Metric == "blood-group-o-minus");
+
+        Assert.Equal(1, item.WatchWeeks);
+        Assert.Equal(1, item.WarningWeeks);
+        Assert.Equal(1, item.CriticalWeeks);
+        Assert.Equal(3, item.TotalObservedWeeks);
+    }
+
+    [Fact]
+    public async Task GetUnstableMetrics_ShouldReturnTransitionCounts()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(
+            $"/api/v1/analytics/reserves/unstable-metrics?source={SourceKey}&weeks=3&limit=20");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<UnstableMetricsResponse>();
+        Assert.NotNull(payload);
+        Assert.NotEmpty(payload!.Items);
+
+        var item = Assert.Single(payload.Items, entry =>
+            entry.Region.Key == "pt-norte"
+            && entry.Metric == "blood-group-o-minus");
+
+        Assert.Equal(2, item.Transitions);
+    }
+
+    [Fact]
+    public async Task AnalyticsResponses_ShouldNotContainSensitiveContactFields()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        var endpoints = new[]
+        {
+            $"/api/v1/analytics/reserves/deltas?source={SourceKey}",
+            $"/api/v1/analytics/reserves/top-downgrades?source={SourceKey}&weeks=3",
+            $"/api/v1/analytics/reserves/time-in-status?source={SourceKey}&weeks=3",
+            $"/api/v1/analytics/reserves/unstable-metrics?source={SourceKey}&weeks=3",
+        };
+
+        foreach (var endpoint in endpoints)
+        {
+            using var response = await client.GetAsync(endpoint);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            var json = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("\"email\"", json, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("\"phone\"", json, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("\"mobile_phone\"", json, StringComparison.OrdinalIgnoreCase);
+
+            using var document = JsonDocument.Parse(json);
+            Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        }
+    }
+
+    [Fact]
     public async Task PublicEndpoints_ShouldBeRateLimited()
     {
         await using var factory = CreateFactory(new Dictionary<string, string?>
@@ -225,6 +347,10 @@ public sealed class PublicReadApiEndpointsTests
         Assert.Contains("/api/v1/institutions", openApiDocument, StringComparison.Ordinal);
         Assert.Contains("/api/v1/institutions/nearest", openApiDocument, StringComparison.Ordinal);
         Assert.Contains("/api/v1/sessions", openApiDocument, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/analytics/reserves/deltas", openApiDocument, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/analytics/reserves/top-downgrades", openApiDocument, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/analytics/reserves/time-in-status", openApiDocument, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/analytics/reserves/unstable-metrics", openApiDocument, StringComparison.Ordinal);
         Assert.DoesNotContain("institutionRegion", openApiDocument, StringComparison.Ordinal);
         Assert.DoesNotContain("sessionRegion", openApiDocument, StringComparison.Ordinal);
     }
@@ -265,7 +391,8 @@ public sealed class PublicReadApiEndpointsTests
                 CreatedAtUtc = DateTime.UtcNow,
             });
 
-        var capturedAtUtc = DateTime.UtcNow.AddMinutes(-15);
+        var referenceDateWeek3 = new DateOnly(2026, 3, 2);
+        var capturedAtUtc = new DateTime(2026, 3, 2, 12, 0, 0, DateTimeKind.Utc);
         dbContext.CurrentReserves.Add(new CurrentReserveEntity
         {
             Id = Guid.NewGuid(),
@@ -274,10 +401,72 @@ public sealed class PublicReadApiEndpointsTests
             MetricKey = "blood-group-o-minus",
             StatusKey = "critical",
             StatusLabel = "Critical",
-            ReferenceDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            ReferenceDate = referenceDateWeek3,
             CapturedAtUtc = capturedAtUtc,
             UpdatedAtUtc = DateTime.UtcNow,
         });
+
+        dbContext.ReserveHistoryObservations.AddRange(
+            new ReserveHistoryObservationEntity
+            {
+                SourceId = source.Id,
+                RegionId = northRegionId,
+                MetricKey = "blood-group-o-minus",
+                StatusKey = "watch",
+                StatusRank = 1,
+                ReferenceDate = new DateOnly(2026, 2, 17),
+                CapturedAtUtc = new DateTime(2026, 2, 17, 10, 0, 0, DateTimeKind.Utc),
+            },
+            new ReserveHistoryObservationEntity
+            {
+                SourceId = source.Id,
+                RegionId = northRegionId,
+                MetricKey = "blood-group-o-minus",
+                StatusKey = "warning",
+                StatusRank = 2,
+                ReferenceDate = new DateOnly(2026, 2, 24),
+                CapturedAtUtc = new DateTime(2026, 2, 24, 10, 0, 0, DateTimeKind.Utc),
+            },
+            new ReserveHistoryObservationEntity
+            {
+                SourceId = source.Id,
+                RegionId = northRegionId,
+                MetricKey = "blood-group-o-minus",
+                StatusKey = "critical",
+                StatusRank = 3,
+                ReferenceDate = referenceDateWeek3,
+                CapturedAtUtc = new DateTime(2026, 3, 2, 10, 0, 0, DateTimeKind.Utc),
+            },
+            new ReserveHistoryObservationEntity
+            {
+                SourceId = source.Id,
+                RegionId = centerRegionId,
+                MetricKey = "blood-group-a-plus",
+                StatusKey = "normal",
+                StatusRank = 0,
+                ReferenceDate = new DateOnly(2026, 2, 17),
+                CapturedAtUtc = new DateTime(2026, 2, 17, 11, 0, 0, DateTimeKind.Utc),
+            },
+            new ReserveHistoryObservationEntity
+            {
+                SourceId = source.Id,
+                RegionId = centerRegionId,
+                MetricKey = "blood-group-a-plus",
+                StatusKey = "watch",
+                StatusRank = 1,
+                ReferenceDate = new DateOnly(2026, 2, 24),
+                CapturedAtUtc = new DateTime(2026, 2, 24, 11, 0, 0, DateTimeKind.Utc),
+            },
+            new ReserveHistoryObservationEntity
+            {
+                SourceId = source.Id,
+                RegionId = centerRegionId,
+                MetricKey = "blood-group-a-plus",
+                StatusKey = "watch",
+                StatusRank = 1,
+                ReferenceDate = referenceDateWeek3,
+                CapturedAtUtc = new DateTime(2026, 3, 2, 11, 0, 0, DateTimeKind.Utc),
+            });
 
         var centerAId = Guid.Parse("00000000-0000-0000-0000-000000000101");
         var centerBId = Guid.Parse("00000000-0000-0000-0000-000000000102");

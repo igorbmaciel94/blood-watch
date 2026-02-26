@@ -94,8 +94,152 @@ public sealed class FetchPortugalReservesJobTests
         var reserve = await dbContext.CurrentReserves.SingleAsync();
         Assert.Equal("critical", reserve.StatusKey);
 
+        var historyRows = await dbContext.ReserveHistoryObservations
+            .OrderBy(entry => entry.CapturedAtUtc)
+            .ToListAsync();
+        Assert.Equal(2, historyRows.Count);
+        Assert.All(historyRows, entry => Assert.Equal(new DateOnly(2026, 2, 20), entry.ReferenceDate));
+        Assert.Contains(historyRows, entry => entry.StatusKey == "warning" && entry.StatusRank == 2);
+        Assert.Contains(historyRows, entry => entry.StatusKey == "critical" && entry.StatusRank == 3);
+
         Assert.Equal(1, await dbContext.DonationCenters.CountAsync());
         Assert.Equal(1, await dbContext.CollectionSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenSnapshotUnchanged_ShouldNotInsertDuplicateHistory()
+    {
+        var dbOptions = new DbContextOptionsBuilder<BloodWatchDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+
+        await using var dbContext = new BloodWatchDbContext(dbOptions);
+        await dbContext.Database.EnsureCreatedAsync();
+
+        var snapshot = CreateSnapshot(
+            capturedAtUtc: new DateTime(2026, 2, 20, 10, 0, 0, DateTimeKind.Utc),
+            sourceUpdatedAtUtc: new DateTime(2026, 2, 20, 9, 0, 0, DateTimeKind.Utc),
+            statusKey: "warning");
+
+        var adapter = new SequenceAdapter(snapshot, snapshot);
+        var dadorClient = new FakeDadorClient(
+            InstitutionsJson: """{ "data": { "CentrosColheita": [] } }""",
+            SessionsJson: """{ "data": { "Sessoes": [] } }""");
+
+        var job = new FetchPortugalReservesJob(
+            [adapter],
+            dadorClient,
+            new DadorInstitutionsMapper(),
+            new DadorSessionsMapper(),
+            [],
+            dbContext,
+            CreateDispatchEngine(dbContext),
+            NullLogger<FetchPortugalReservesJob>.Instance);
+
+        await job.ExecuteAsync();
+        await job.ExecuteAsync();
+
+        Assert.Equal(1, await dbContext.CurrentReserves.CountAsync());
+        Assert.Equal(1, await dbContext.ReserveHistoryObservations.CountAsync());
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenReferenceDateChanges_ShouldInsertHistoryEvenWithSameStatus()
+    {
+        var dbOptions = new DbContextOptionsBuilder<BloodWatchDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+
+        await using var dbContext = new BloodWatchDbContext(dbOptions);
+        await dbContext.Database.EnsureCreatedAsync();
+
+        var firstSnapshot = CreateSnapshot(
+            capturedAtUtc: new DateTime(2026, 2, 20, 10, 0, 0, DateTimeKind.Utc),
+            sourceUpdatedAtUtc: new DateTime(2026, 2, 20, 9, 0, 0, DateTimeKind.Utc),
+            statusKey: "warning",
+            referenceDate: new DateOnly(2026, 2, 20));
+
+        var secondSnapshot = CreateSnapshot(
+            capturedAtUtc: new DateTime(2026, 2, 27, 10, 0, 0, DateTimeKind.Utc),
+            sourceUpdatedAtUtc: new DateTime(2026, 2, 27, 9, 0, 0, DateTimeKind.Utc),
+            statusKey: "warning",
+            referenceDate: new DateOnly(2026, 2, 27));
+
+        var adapter = new SequenceAdapter(firstSnapshot, secondSnapshot);
+        var dadorClient = new FakeDadorClient(
+            InstitutionsJson: """{ "data": { "CentrosColheita": [] } }""",
+            SessionsJson: """{ "data": { "Sessoes": [] } }""");
+
+        var job = new FetchPortugalReservesJob(
+            [adapter],
+            dadorClient,
+            new DadorInstitutionsMapper(),
+            new DadorSessionsMapper(),
+            [],
+            dbContext,
+            CreateDispatchEngine(dbContext),
+            NullLogger<FetchPortugalReservesJob>.Instance);
+
+        await job.ExecuteAsync();
+        await job.ExecuteAsync();
+
+        var historyRows = await dbContext.ReserveHistoryObservations
+            .OrderBy(entry => entry.ReferenceDate)
+            .ToListAsync();
+
+        Assert.Equal(2, historyRows.Count);
+        Assert.Equal(new DateOnly(2026, 2, 20), historyRows[0].ReferenceDate);
+        Assert.Equal(new DateOnly(2026, 2, 27), historyRows[1].ReferenceDate);
+        Assert.All(historyRows, entry => Assert.Equal("warning", entry.StatusKey));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenReferenceDateIsMissing_ShouldFallbackToCapturedDate()
+    {
+        var dbOptions = new DbContextOptionsBuilder<BloodWatchDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+
+        await using var dbContext = new BloodWatchDbContext(dbOptions);
+        await dbContext.Database.EnsureCreatedAsync();
+
+        var capturedAtUtc = new DateTime(2026, 2, 21, 12, 45, 0, DateTimeKind.Utc);
+        var snapshot = new Snapshot(
+            new SourceRef(PortugalAdapter.DefaultAdapterKey, PortugalAdapter.DefaultSourceName),
+            capturedAtUtc,
+            ReferenceDate: null,
+            [new SnapshotItem(
+                new Metric("blood-group-o-minus", "O-"),
+                new RegionRef("pt-norte", "Norte"),
+                "watch",
+                ReserveStatusCatalog.GetLabel("watch"))],
+            SourceUpdatedAtUtc: new DateTime(2026, 2, 21, 12, 0, 0, DateTimeKind.Utc));
+
+        var adapter = new SequenceAdapter(snapshot);
+        var dadorClient = new FakeDadorClient(
+            InstitutionsJson: """{ "data": { "CentrosColheita": [] } }""",
+            SessionsJson: """{ "data": { "Sessoes": [] } }""");
+
+        var job = new FetchPortugalReservesJob(
+            [adapter],
+            dadorClient,
+            new DadorInstitutionsMapper(),
+            new DadorSessionsMapper(),
+            [],
+            dbContext,
+            CreateDispatchEngine(dbContext),
+            NullLogger<FetchPortugalReservesJob>.Instance);
+
+        await job.ExecuteAsync();
+
+        var expectedReferenceDate = DateOnly.FromDateTime(capturedAtUtc);
+        var reserve = await dbContext.CurrentReserves.SingleAsync();
+        var history = await dbContext.ReserveHistoryObservations.SingleAsync();
+
+        Assert.Equal(expectedReferenceDate, reserve.ReferenceDate);
+        Assert.Equal(expectedReferenceDate, history.ReferenceDate);
+        Assert.Equal("watch", history.StatusKey);
+        Assert.Equal(1, history.StatusRank);
     }
 
     [Fact]
@@ -199,13 +343,17 @@ public sealed class FetchPortugalReservesJobTests
         Assert.Equal(1, await dbContext.Deliveries.CountAsync());
     }
 
-    private static Snapshot CreateSnapshot(DateTime capturedAtUtc, DateTime sourceUpdatedAtUtc, string statusKey)
+    private static Snapshot CreateSnapshot(
+        DateTime capturedAtUtc,
+        DateTime sourceUpdatedAtUtc,
+        string statusKey,
+        DateOnly? referenceDate = null)
     {
         var source = new SourceRef(PortugalAdapter.DefaultAdapterKey, PortugalAdapter.DefaultSourceName);
         return new Snapshot(
             source,
             capturedAtUtc,
-            new DateOnly(2026, 2, 20),
+            referenceDate ?? new DateOnly(2026, 2, 20),
             [new SnapshotItem(
                 new Metric("blood-group-o-minus", "O-"),
                 new RegionRef("pt-norte", "Norte"),

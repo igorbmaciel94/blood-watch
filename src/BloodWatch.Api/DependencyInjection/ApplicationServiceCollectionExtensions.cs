@@ -51,6 +51,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddProblemDetails();
 
         services.AddScoped<ISubscriptionService, SubscriptionService>();
+        services.AddScoped<IReserveAnalyticsQueryService, ReserveAnalyticsQueryService>();
 
         services.AddAuthentication(options =>
         {

@@ -43,11 +43,11 @@ public static class ReserveStatusCatalog
     {
         return NormalizeKey(rawStatusKey) switch
         {
-            Critical => 4,
-            Warning => 3,
-            Watch => 2,
-            Unknown => 1,
-            _ => 0,
+            Critical => 3,
+            Warning => 2,
+            Watch => 1,
+            Normal => 0,
+            _ => -1,
         };
     }
 

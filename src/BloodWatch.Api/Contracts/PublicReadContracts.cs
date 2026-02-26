@@ -5,6 +5,10 @@ public sealed record LatestReservesQuery(string? Source, string? Region, string?
 public sealed record InstitutionsQuery(string? Source, string? Region);
 public sealed record NearestInstitutionsQuery(string? Source, decimal? Lat, decimal? Lon, int? Limit);
 public sealed record SessionsQuery(string? Source, string? Region, string? FromDate, int? Limit);
+public sealed record ReserveDeltasQuery(string? Source, int? Limit);
+public sealed record TopDowngradesQuery(string? Source, int? Weeks, int? Limit);
+public sealed record TimeInStatusQuery(string? Source, int? Weeks, int? Limit);
+public sealed record UnstableMetricsQuery(string? Source, int? Weeks, int? Limit);
 
 public sealed record SourcesResponse(IReadOnlyCollection<SourceItem> Items);
 
@@ -69,3 +73,56 @@ public sealed record SessionItem(
     decimal? Longitude);
 
 public sealed record SessionInstitutionItem(Guid? Id, string Code, string Name);
+
+public sealed record ReserveDeltasResponse(
+    string Source,
+    DateOnly CurrentReferenceDate,
+    DateOnly PreviousReferenceDate,
+    IReadOnlyCollection<ReserveDeltaItem> Items);
+
+public sealed record ReserveDeltaItem(
+    RegionItem Region,
+    string Metric,
+    string PreviousStatusKey,
+    short PreviousStatusRank,
+    string CurrentStatusKey,
+    short CurrentStatusRank,
+    short RankDelta);
+
+public sealed record TopDowngradesResponse(
+    string Source,
+    int Weeks,
+    DateOnly FromReferenceDate,
+    DateOnly ToReferenceDate,
+    IReadOnlyCollection<TopDowngradeItem> Items);
+
+public sealed record TopDowngradeItem(
+    RegionItem Region,
+    int Downgrades);
+
+public sealed record TimeInStatusResponse(
+    string Source,
+    int Weeks,
+    DateOnly FromReferenceDate,
+    DateOnly ToReferenceDate,
+    IReadOnlyCollection<TimeInStatusItem> Items);
+
+public sealed record TimeInStatusItem(
+    RegionItem Region,
+    string Metric,
+    int WatchWeeks,
+    int WarningWeeks,
+    int CriticalWeeks,
+    int TotalObservedWeeks);
+
+public sealed record UnstableMetricsResponse(
+    string Source,
+    int Weeks,
+    DateOnly FromReferenceDate,
+    DateOnly ToReferenceDate,
+    IReadOnlyCollection<UnstableMetricItem> Items);
+
+public sealed record UnstableMetricItem(
+    RegionItem Region,
+    string Metric,
+    int Transitions);
