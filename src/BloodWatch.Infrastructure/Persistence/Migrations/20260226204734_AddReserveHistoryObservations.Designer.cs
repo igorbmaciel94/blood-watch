@@ -3,6 +3,7 @@ using System;
 using BloodWatch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BloodWatch.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(BloodWatchDbContext))]
-    partial class BloodWatchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260226204734_AddReserveHistoryObservations")]
+    partial class AddReserveHistoryObservations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -446,8 +449,6 @@ namespace BloodWatch.Infrastructure.Persistence.Migrations
                     b.HasKey("SourceId", "RegionId", "MetricKey", "ReferenceDate", "StatusKey");
 
                     b.HasIndex("RegionId");
-
-                    b.HasIndex("SourceId", "ReferenceDate");
 
                     b.HasIndex("SourceId", "MetricKey", "ReferenceDate");
 

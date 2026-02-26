@@ -8,6 +8,7 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
     public DbSet<SourceEntity> Sources => Set<SourceEntity>();
     public DbSet<RegionEntity> Regions => Set<RegionEntity>();
     public DbSet<CurrentReserveEntity> CurrentReserves => Set<CurrentReserveEntity>();
+    public DbSet<ReserveHistoryObservationEntity> ReserveHistoryObservations => Set<ReserveHistoryObservationEntity>();
     public DbSet<DonationCenterEntity> DonationCenters => Set<DonationCenterEntity>();
     public DbSet<CollectionSessionEntity> CollectionSessions => Set<CollectionSessionEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
@@ -72,6 +73,32 @@ public sealed class BloodWatchDbContext(DbContextOptions<BloodWatchDbContext> op
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Region)
                 .WithMany(x => x.CurrentReserves)
+                .HasForeignKey(x => x.RegionId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ReserveHistoryObservationEntity>(entity =>
+        {
+            entity.ToTable("reserve_history_observations");
+            entity.HasKey(x => new { x.SourceId, x.RegionId, x.MetricKey, x.ReferenceDate, x.StatusKey });
+            entity.Property(x => x.SourceId).HasColumnName("source_id").IsRequired();
+            entity.Property(x => x.RegionId).HasColumnName("region_id").IsRequired();
+            entity.Property(x => x.MetricKey).HasColumnName("metric_key").IsRequired();
+            entity.Property(x => x.StatusKey).HasColumnName("status_key").IsRequired();
+            entity.Property(x => x.StatusRank).HasColumnName("status_rank").HasColumnType("smallint").IsRequired();
+            entity.Property(x => x.ReferenceDate).HasColumnName("reference_date").IsRequired();
+            entity.Property(x => x.CapturedAtUtc).HasColumnName("captured_at_utc").IsRequired();
+            entity.HasIndex(x => new { x.SourceId, x.MetricKey, x.ReferenceDate });
+            entity.HasIndex(x => new { x.SourceId, x.ReferenceDate });
+            entity.HasIndex(x => new { x.SourceId, x.RegionId, x.MetricKey, x.CapturedAtUtc })
+                .IsDescending(false, false, false, true);
+            entity.HasIndex(x => new { x.SourceId, x.StatusRank, x.ReferenceDate });
+            entity.HasOne(x => x.Source)
+                .WithMany(x => x.ReserveHistoryObservations)
+                .HasForeignKey(x => x.SourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Region)
+                .WithMany(x => x.ReserveHistoryObservations)
                 .HasForeignKey(x => x.RegionId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
