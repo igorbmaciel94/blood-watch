@@ -6,6 +6,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - /opt/bloodwatch/data/postgres:/var/lib/postgresql/data
     healthcheck:
@@ -102,6 +104,8 @@ services:
       - "443:443"
     environment:
       CADDY_EMAIL: ${CADDY_EMAIL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/bloodwatch/data/caddy/data:/data
