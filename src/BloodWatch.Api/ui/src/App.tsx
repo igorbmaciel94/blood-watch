@@ -973,6 +973,22 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
                   {busyFeatureFlagAction === "status" ? "Checking..." : "Refresh"}
                 </button>
               </div>
+              <label className="copilot-control-key">
+                <span>Admin API key</span>
+                <input
+                  type="password"
+                  value={adminApiKey}
+                  onChange={(event) => setAdminApiKey(event.target.value)}
+                  onBlur={() => {
+                    if (adminApiKey.trim().length > 0) {
+                      void loadFeatureFlagStatus();
+                    }
+                  }}
+                  placeholder="X-Admin-Api-Key"
+                  autoComplete="off"
+                  required
+                />
+              </label>
               <label className="copilot-toggle-row">
                 <span>{busyFeatureFlagAction === "toggle" ? "Applying..." : "Enable / Disable"}</span>
                 <span className="copilot-toggle">
@@ -1021,23 +1037,6 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
                   </option>
                 ))}
               </select>
-            </label>
-
-            <label>
-              Admin API key
-              <input
-                type="password"
-                value={adminApiKey}
-                onChange={(event) => setAdminApiKey(event.target.value)}
-                onBlur={() => {
-                  if (adminApiKey.trim().length > 0) {
-                    void loadFeatureFlagStatus();
-                  }
-                }}
-                placeholder="X-Admin-Api-Key"
-                autoComplete="off"
-                required
-              />
             </label>
 
             <label>
