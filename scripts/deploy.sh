@@ -63,6 +63,9 @@ compose pull api worker
 echo "Ensuring Postgres is running..."
 compose up -d postgres
 
+echo "Preparing on-demand Copilot containers (not started)..."
+compose --profile copilot create ollama ollama-model-init || true
+
 echo "Running one-shot migrator..."
 compose run --rm migrator
 

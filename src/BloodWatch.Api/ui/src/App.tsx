@@ -1045,11 +1045,11 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
           </form>
 
           <p className="hint">
-            Keep Copilot disabled by default in production and enable only for controlled windows on low-memory hosts.
+            Use Enable/Disable to hard-toggle Ollama (real memory savings) during controlled windows on low-memory hosts.
           </p>
           {featureFlagStatus ? (
             <p className="hint">
-              Runtime status: <strong>{featureFlagStatus.enabled ? "enabled" : "disabled"}</strong> • configured default:{" "}
+              Infrastructure status: <strong>{featureFlagStatus.enabled ? "enabled" : "disabled"}</strong> • configured default:{" "}
               <strong>{featureFlagStatus.configuredEnabled ? "enabled" : "disabled"}</strong> • updated:{" "}
               {formatUtc(featureFlagStatus.updatedAtUtc)}
             </p>

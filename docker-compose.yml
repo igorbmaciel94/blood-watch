@@ -81,6 +81,7 @@ services:
       BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash:-}
       BloodWatch__Copilot__Enabled: ${BloodWatch__Copilot__Enabled:-false}
       BloodWatch__Copilot__AdminApiKey: ${BloodWatch__Copilot__AdminApiKey:-}
+      BloodWatch__Copilot__Control__Enabled: ${BloodWatch__Copilot__Control__Enabled:-true}
       OLLAMA__BASE_URL: ${OLLAMA__BASE_URL:-http://ollama:11434}
       OLLAMA__MODEL: ${OLLAMA__MODEL:-qwen2.5:0.5b}
       OLLAMA__TIMEOUT_SECONDS: ${OLLAMA__TIMEOUT_SECONDS:-30}
@@ -88,6 +89,8 @@ services:
       BloodWatch__Build__Version: ${BloodWatch__Build__Version:-dev}
       BloodWatch__Build__Commit: ${BloodWatch__Build__Commit:-local}
       BloodWatch__Build__Date: ${BloodWatch__Build__Date:-1970-01-01T00:00:00Z}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
     depends_on:

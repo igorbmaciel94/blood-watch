@@ -3,6 +3,7 @@ using System.Text;
 using BloodWatch.Api.Contracts;
 using BloodWatch.Api.Copilot;
 using BloodWatch.Api.Options;
+using BloodWatch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -47,7 +48,7 @@ public static class CopilotEndpoints
 
         group.MapGet("/status", GetStatusAsync)
             .WithName("GetCopilotStatus")
-            .WithSummary("Get Copilot runtime status.")
+            .WithSummary("Get Copilot infrastructure status (Ollama hard-toggle).")
             .Produces<CopilotFeatureFlagResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
@@ -56,7 +57,7 @@ public static class CopilotEndpoints
 
         group.MapPost("/feature-flag", SetFeatureFlagAsync)
             .WithName("SetCopilotFeatureFlag")
-            .WithSummary("Enable or disable Copilot runtime feature flag.")
+            .WithSummary("Enable or disable Copilot infrastructure (starts/stops Ollama container).")
             .Produces<CopilotFeatureFlagResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
@@ -130,10 +131,11 @@ public static class CopilotEndpoints
         return TypedResults.Ok(result.Value);
     }
 
-    private static IResult GetStatusAsync(
+    private static async Task<IResult> GetStatusAsync(
         HttpContext httpContext,
         IOptions<CopilotOptions> copilotOptions,
-        ICopilotFeatureFlagState featureFlagState)
+        ICopilotInfrastructureController infrastructureController,
+        CancellationToken cancellationToken)
     {
         var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
         if (authFailure is not null)
@@ -141,14 +143,16 @@ public static class CopilotEndpoints
             return authFailure;
         }
 
-        return TypedResults.Ok(BuildFeatureFlagResponse(copilotOptions.Value, featureFlagState));
+        var result = await infrastructureController.GetStatusAsync(cancellationToken);
+        return HandleControllerResult(result);
     }
 
-    private static IResult SetFeatureFlagAsync(
+    private static async Task<IResult> SetFeatureFlagAsync(
         CopilotFeatureFlagRequest request,
         HttpContext httpContext,
         IOptions<CopilotOptions> copilotOptions,
-        ICopilotFeatureFlagState featureFlagState)
+        ICopilotInfrastructureController infrastructureController,
+        CancellationToken cancellationToken)
     {
         var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
         if (authFailure is not null)
@@ -156,8 +160,8 @@ public static class CopilotEndpoints
             return authFailure;
         }
 
-        featureFlagState.SetEnabled(request.Enabled);
-        return TypedResults.Ok(BuildFeatureFlagResponse(copilotOptions.Value, featureFlagState));
+        var result = await infrastructureController.SetEnabledAsync(request.Enabled, cancellationToken);
+        return HandleControllerResult(result);
     }
 
     private static IResult? AuthorizeAdminKey(HttpContext httpContext, CopilotOptions options)
@@ -194,12 +198,14 @@ public static class CopilotEndpoints
         return authorized ? null : UnauthorizedProblem();
     }
 
-    private static CopilotFeatureFlagResponse BuildFeatureFlagResponse(CopilotOptions options, ICopilotFeatureFlagState featureFlagState)
+    private static IResult HandleControllerResult(ServiceResult<CopilotFeatureFlagResponse> result)
     {
-        return new CopilotFeatureFlagResponse(
-            Enabled: featureFlagState.IsEnabled,
-            ConfiguredEnabled: options.Enabled,
-            UpdatedAtUtc: featureFlagState.UpdatedAtUtc);
+        if (!result.IsSuccess)
+        {
+            return EndpointResultFactory.Problem(result.Error!);
+        }
+
+        return TypedResults.Ok(result.Value);
     }
 
     private static IResult UnauthorizedProblem()
