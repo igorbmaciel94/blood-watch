@@ -69,6 +69,8 @@ services:
       context: .
       dockerfile: src/BloodWatch.Api/Dockerfile
     container_name: bloodwatch-api
+    group_add:
+      - "${HOST_DOCKER_GID:-998}"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=bloodwatch;Username=bloodwatch;Password=bloodwatch

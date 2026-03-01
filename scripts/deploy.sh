@@ -40,6 +40,26 @@ upsert_env_var() {
   mv "${tmp_file}" "${ENV_FILE}"
 }
 
+resolve_docker_sock_gid() {
+  local socket_path="/var/run/docker.sock"
+
+  if [[ ! -S "${socket_path}" ]]; then
+    return 1
+  fi
+
+  if stat -c '%g' "${socket_path}" >/dev/null 2>&1; then
+    stat -c '%g' "${socket_path}"
+    return 0
+  fi
+
+  if stat -f '%g' "${socket_path}" >/dev/null 2>&1; then
+    stat -f '%g' "${socket_path}"
+    return 0
+  fi
+
+  return 1
+}
+
 if [[ $# -gt 0 ]]; then
   export BLOODWATCH_IMAGE_TAG="$1"
   echo "Deploying BLOODWATCH_IMAGE_TAG=${BLOODWATCH_IMAGE_TAG}"
@@ -57,6 +77,14 @@ fi
 
 if [[ -z "${BloodWatch__Build__Date:-}" ]]; then
   export BloodWatch__Build__Date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+fi
+
+if docker_gid="$(resolve_docker_sock_gid)"; then
+  export HOST_DOCKER_GID="${docker_gid}"
+  upsert_env_var "HOST_DOCKER_GID" "${HOST_DOCKER_GID}"
+  echo "Detected HOST_DOCKER_GID=${HOST_DOCKER_GID} from /var/run/docker.sock"
+else
+  echo "Warning: unable to detect /var/run/docker.sock group. Using HOST_DOCKER_GID from env or compose default."
 fi
 
 compose() {
