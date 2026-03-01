@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using BloodWatch.Api.Copilot;
 using BloodWatch.Api.Contracts;
+using BloodWatch.Api.Services;
 using BloodWatch.Copilot;
 using BloodWatch.Copilot.Models;
 using BloodWatch.Infrastructure.Persistence;
@@ -35,6 +37,53 @@ public sealed class CopilotApiEndpointsTests
         });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Status_WithoutApiKey_ShouldReturnUnauthorized()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/v1/copilot/status");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FeatureFlag_DisableThenEnable_ShouldChangeInfrastructureStatus()
+    {
+        await using var factory = CreateFactory();
+        await SeedAllAsync(factory);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
+
+        using var disableResponse = await client.PostAsJsonAsync("/api/v1/copilot/feature-flag", new
+        {
+            enabled = false,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, disableResponse.StatusCode);
+        var disablePayload = await disableResponse.Content.ReadFromJsonAsync<CopilotFeatureFlagResponse>();
+        Assert.NotNull(disablePayload);
+        Assert.False(disablePayload!.Enabled);
+
+        using var enableResponse = await client.PostAsJsonAsync("/api/v1/copilot/feature-flag", new
+        {
+            enabled = true,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, enableResponse.StatusCode);
+        var enablePayload = await enableResponse.Content.ReadFromJsonAsync<CopilotFeatureFlagResponse>();
+        Assert.NotNull(enablePayload);
+        Assert.True(enablePayload!.Enabled);
+
+        using var statusResponse = await client.GetAsync("/api/v1/copilot/status");
+        Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+        var statusPayload = await statusResponse.Content.ReadFromJsonAsync<CopilotFeatureFlagResponse>();
+        Assert.NotNull(statusPayload);
+        Assert.True(statusPayload!.Enabled);
     }
 
     [Fact]
@@ -433,6 +482,8 @@ public sealed class CopilotApiEndpointsTests
             {
                 services.RemoveAll<ILLMClient>();
                 services.AddSingleton<ILLMClient, FakeLLMClient>();
+                services.RemoveAll<ICopilotInfrastructureController>();
+                services.AddSingleton<ICopilotInfrastructureController, FakeInfrastructureController>();
             });
         }
 
@@ -472,6 +523,38 @@ public sealed class CopilotApiEndpointsTests
                 PromptTokens: 120,
                 CompletionTokens: 40,
                 TotalTokens: 160));
+        }
+    }
+
+    private sealed class FakeInfrastructureController : ICopilotInfrastructureController
+    {
+        private readonly object _sync = new();
+        private bool _enabled = true;
+        private DateTime _updatedAtUtc = DateTime.UtcNow;
+
+        public Task<ServiceResult<CopilotFeatureFlagResponse>> GetStatusAsync(CancellationToken cancellationToken)
+        {
+            lock (_sync)
+            {
+                return Task.FromResult(ServiceResult<CopilotFeatureFlagResponse>.Success(new CopilotFeatureFlagResponse(
+                    Enabled: _enabled,
+                    ConfiguredEnabled: true,
+                    UpdatedAtUtc: _updatedAtUtc)));
+            }
+        }
+
+        public Task<ServiceResult<CopilotFeatureFlagResponse>> SetEnabledAsync(bool enabled, CancellationToken cancellationToken)
+        {
+            lock (_sync)
+            {
+                _enabled = enabled;
+                _updatedAtUtc = DateTime.UtcNow;
+
+                return Task.FromResult(ServiceResult<CopilotFeatureFlagResponse>.Success(new CopilotFeatureFlagResponse(
+                    Enabled: _enabled,
+                    ConfiguredEnabled: true,
+                    UpdatedAtUtc: _updatedAtUtc)));
+            }
         }
     }
 }

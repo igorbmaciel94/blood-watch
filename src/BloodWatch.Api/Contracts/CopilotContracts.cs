@@ -2,6 +2,13 @@ namespace BloodWatch.Api.Contracts;
 
 public sealed record CopilotAskRequest(string? Question, string? Source);
 
+public sealed record CopilotFeatureFlagRequest(bool Enabled);
+
+public sealed record CopilotFeatureFlagResponse(
+    bool Enabled,
+    bool ConfiguredEnabled,
+    DateTime UpdatedAtUtc);
+
 public sealed record CopilotDataBasisItem(string QueryId, string Description);
 
 public sealed record CopilotCitation(string QueryId, IReadOnlyCollection<string> ResultIds);

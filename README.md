@@ -77,10 +77,13 @@ When `BloodWatch__Copilot__Enabled=true`, API exposes:
 - `POST /api/v1/copilot/ask`
 - `GET /api/v1/copilot/briefing/daily`
 - `GET /api/v1/copilot/briefing/weekly`
+- `GET /api/v1/copilot/status`
+- `POST /api/v1/copilot/feature-flag`
 
 Copilot is read-only and powered by Ollama (`OLLAMA__BASE_URL`, `OLLAMA__MODEL`).
+`/status` and `/feature-flag` can be used from `/app/copilot` to hard-toggle Ollama (start/stop container) for real RAM savings.
 
-For low-memory hosts (4GB), keep Copilot disabled by default and run Ollama only in the `copilot` profile when needed.
+For low-memory hosts (4GB), keep Copilot off by default and enable only in controlled windows.
 
 ## Production Deployment Model
 

@@ -151,7 +151,19 @@ Automatic path (default):
 Manual fallback path:
 - run `/opt/bloodwatch/compose/scripts/deploy.sh vX.Y.Z` on the server.
 
-On-demand Copilot control in production:
+On-demand Copilot control in production (preferred via API/UI hard toggle):
+
+```bash
+curl -sS -X GET "https://bloodwatch.lighthousedev.uk/api/v1/copilot/status" \
+  -H "X-Admin-Api-Key: <admin-key>"
+
+curl -sS -X POST "https://bloodwatch.lighthousedev.uk/api/v1/copilot/feature-flag" \
+  -H "X-Admin-Api-Key: <admin-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true}'
+```
+
+Manual fallback (server shell scripts):
 
 ```bash
 COMPOSE_FILE=/opt/bloodwatch/compose/docker-compose.prod.yml ENV_FILE=/opt/bloodwatch/compose/.env /opt/bloodwatch/compose/scripts/copilot-on.sh

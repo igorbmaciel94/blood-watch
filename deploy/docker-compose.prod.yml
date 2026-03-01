@@ -57,6 +57,7 @@ services:
       BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash}
       BloodWatch__Copilot__Enabled: ${BloodWatch__Copilot__Enabled:-false}
       BloodWatch__Copilot__AdminApiKey: ${BloodWatch__Copilot__AdminApiKey}
+      BloodWatch__Copilot__Control__Enabled: ${BloodWatch__Copilot__Control__Enabled:-true}
       OLLAMA__BASE_URL: ${OLLAMA__BASE_URL}
       OLLAMA__MODEL: ${OLLAMA__MODEL}
       OLLAMA__TIMEOUT_SECONDS: ${OLLAMA__TIMEOUT_SECONDS}
@@ -64,6 +65,8 @@ services:
       BloodWatch__Build__Version: ${BloodWatch__Build__Version}
       BloodWatch__Build__Commit: ${BloodWatch__Build__Commit}
       BloodWatch__Build__Date: ${BloodWatch__Build__Date}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy

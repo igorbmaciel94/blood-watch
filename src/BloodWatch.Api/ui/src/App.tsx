@@ -81,6 +81,12 @@ type CopilotBriefingResponse = {
   answer: CopilotAnswer;
 };
 
+type CopilotFeatureFlagResponse = {
+  enabled: boolean;
+  configuredEnabled: boolean;
+  updatedAtUtc: string;
+};
+
 type AuthSession = {
   email: string;
   accessToken: string;
@@ -791,9 +797,11 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
   const [question, setQuestion] = useState("What is critical now and where?");
   const [busyAsk, setBusyAsk] = useState(false);
   const [busyBriefing, setBusyBriefing] = useState<null | "daily" | "weekly">(null);
+  const [busyFeatureFlagAction, setBusyFeatureFlagAction] = useState<null | "status" | "enable" | "disable">(null);
   const [message, setMessage] = useState<string | null>(null);
   const [answer, setAnswer] = useState<CopilotAnswer | null>(null);
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
+  const [featureFlagStatus, setFeatureFlagStatus] = useState<CopilotFeatureFlagResponse | null>(null);
 
   useEffect(() => {
     void loadSources();
@@ -886,6 +894,52 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
     }
   }
 
+  async function loadFeatureFlagStatus() {
+    const adminHeader = getAdminHeader();
+    if (!adminHeader) {
+      return;
+    }
+
+    setBusyFeatureFlagAction("status");
+    setMessage(null);
+    try {
+      const payload = await requestJson<CopilotFeatureFlagResponse>("/api/v1/copilot/status", {
+        headers: adminHeader
+      });
+      setFeatureFlagStatus(payload);
+    } catch (error) {
+      setMessage(readError(error));
+    } finally {
+      setBusyFeatureFlagAction(null);
+    }
+  }
+
+  async function setFeatureFlag(enabled: boolean) {
+    const adminHeader = getAdminHeader();
+    if (!adminHeader) {
+      return;
+    }
+
+    setBusyFeatureFlagAction(enabled ? "enable" : "disable");
+    setMessage(null);
+    try {
+      const payload = await requestJson<CopilotFeatureFlagResponse>("/api/v1/copilot/feature-flag", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeader
+        },
+        body: JSON.stringify({ enabled })
+      });
+      setFeatureFlagStatus(payload);
+      setMessage(enabled ? "Copilot runtime flag enabled." : "Copilot runtime flag disabled.");
+    } catch (error) {
+      setMessage(readError(error));
+    } finally {
+      setBusyFeatureFlagAction(null);
+    }
+  }
+
   return (
     <div className="page">
       <header className="hero">
@@ -949,20 +1003,41 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
             </label>
 
             <div className="actions">
-              <button type="submit" disabled={busyAsk || busyBriefing !== null}>
+              <button
+                type="button"
+                onClick={() => void loadFeatureFlagStatus()}
+                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
+              >
+                {busyFeatureFlagAction === "status" ? "Checking..." : "Status"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setFeatureFlag(true)}
+                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
+              >
+                {busyFeatureFlagAction === "enable" ? "Enabling..." : "Enable Copilot"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setFeatureFlag(false)}
+                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
+              >
+                {busyFeatureFlagAction === "disable" ? "Disabling..." : "Disable Copilot"}
+              </button>
+              <button type="submit" disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}>
                 {busyAsk ? "Asking..." : "Ask"}
               </button>
               <button
                 type="button"
                 onClick={() => void loadBriefing("daily")}
-                disabled={busyAsk || busyBriefing !== null}
+                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
               >
                 {busyBriefing === "daily" ? "Loading..." : "Daily Briefing"}
               </button>
               <button
                 type="button"
                 onClick={() => void loadBriefing("weekly")}
-                disabled={busyAsk || busyBriefing !== null}
+                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
               >
                 {busyBriefing === "weekly" ? "Loading..." : "Weekly Briefing"}
               </button>
@@ -970,8 +1045,15 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
           </form>
 
           <p className="hint">
-            Keep Copilot disabled by default in production and enable only for controlled windows on low-memory hosts.
+            Use Enable/Disable to hard-toggle Ollama (real memory savings) during controlled windows on low-memory hosts.
           </p>
+          {featureFlagStatus ? (
+            <p className="hint">
+              Infrastructure status: <strong>{featureFlagStatus.enabled ? "enabled" : "disabled"}</strong> • configured default:{" "}
+              <strong>{featureFlagStatus.configuredEnabled ? "enabled" : "disabled"}</strong> • updated:{" "}
+              {formatUtc(featureFlagStatus.updatedAtUtc)}
+            </p>
+          ) : null}
           {message ? <p className="error">{message}</p> : null}
         </section>
 

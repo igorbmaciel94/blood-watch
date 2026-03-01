@@ -91,6 +91,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IReserveAnalyticsQueryService, ReserveAnalyticsQueryService>();
         services.AddScoped<ICopilotService, CopilotService>();
         services.AddScoped<CopilotAnalyticsTools>();
+        services.AddSingleton<ICopilotInfrastructureController, DockerCopilotInfrastructureController>();
         services.AddSingleton<CopilotGuardrailEvaluator>();
         services.AddSingleton<CopilotIntentRouter>();
         services.AddHttpClient<ILLMClient, OllamaLLMClient>();

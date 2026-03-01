@@ -61,6 +61,8 @@ Seed data includes one source record:
   - `POST /api/v1/copilot/ask`
   - `GET /api/v1/copilot/briefing/daily`
   - `GET /api/v1/copilot/briefing/weekly`
+  - `GET /api/v1/copilot/status`
+  - `POST /api/v1/copilot/feature-flag` (hard-toggle Ollama container)
 - Subscription `metric` is optional:
   - explicit metric key for exact matching
   - wildcard (`null` in API, persisted as `*`) to match all metrics in scope
@@ -70,6 +72,7 @@ Seed data includes one source record:
 
 - Docker Compose manages `postgres`, `migrator`, `api`, and `worker`.
 - Copilot runtime (`ollama`, `ollama-model-init`) is profile-gated (`--profile copilot`) for on-demand usage.
+- API mounts Docker socket to control `ollama` start/stop from internal Copilot toggle endpoints.
 - `postgres` has a healthcheck (`pg_isready`) and persistent volume.
 - `migrator` applies EF migrations as a one-shot startup step.
 - `api` and `worker` depend on Postgres health and successful migration completion.

@@ -17,6 +17,8 @@ public sealed class CopilotOptions
     public CopilotRateLimitingOptions RateLimiting { get; set; } = new();
 
     public CopilotGuardrailsOptions Guardrails { get; set; } = new();
+
+    public CopilotInfrastructureControlOptions Control { get; set; } = new();
 }
 
 public sealed class CopilotRateLimitingOptions
@@ -29,4 +31,17 @@ public sealed class CopilotRateLimitingOptions
 public sealed class CopilotGuardrailsOptions
 {
     public int MaxQuestionLength { get; set; } = 1000;
+}
+
+public sealed class CopilotInfrastructureControlOptions
+{
+    public bool Enabled { get; set; } = false;
+
+    public int OperationTimeoutSeconds { get; set; } = 60;
+
+    public int HealthProbeTimeoutSeconds { get; set; } = 30;
+
+    public string OllamaContainerName { get; set; } = "bloodwatch-ollama";
+
+    public string OllamaModelInitContainerName { get; set; } = "bloodwatch-ollama-model-init";
 }
