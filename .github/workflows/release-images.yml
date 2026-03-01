@@ -73,6 +73,23 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync deploy assets
+        env:
+          PROD_COMPOSE_DIR: ${{ vars.PROD_COMPOSE_DIR }}
+        run: |
+          set -euo pipefail
+          compose_dir="${PROD_COMPOSE_DIR:-/opt/bloodwatch/compose}"
+          mkdir -p "${compose_dir}/scripts"
+
+          install -m 0644 deploy/docker-compose.prod.yml "${compose_dir}/docker-compose.prod.yml"
+          install -m 0644 deploy/Caddyfile "${compose_dir}/Caddyfile"
+          install -m 0755 scripts/deploy.sh "${compose_dir}/scripts/deploy.sh"
+          install -m 0755 scripts/backup-postgres.sh "${compose_dir}/scripts/backup-postgres.sh"
+          install -m 0755 scripts/restore-postgres.sh "${compose_dir}/scripts/restore-postgres.sh"
+
       - name: Validate deploy path and script
         env:
           PROD_COMPOSE_DIR: ${{ vars.PROD_COMPOSE_DIR }}
@@ -81,6 +98,10 @@ jobs:
           compose_dir="${PROD_COMPOSE_DIR:-/opt/bloodwatch/compose}"
           if [ ! -x "${compose_dir}/scripts/deploy.sh" ]; then
             echo "Deploy script is missing or not executable: ${compose_dir}/scripts/deploy.sh"
+            exit 1
+          fi
+          if [ ! -f "${compose_dir}/.env" ]; then
+            echo "Environment file is missing: ${compose_dir}/.env"
             exit 1
           fi
 
