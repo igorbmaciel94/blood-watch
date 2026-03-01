@@ -9,8 +9,9 @@ This document describes the current architecture: dador/IPST ingestion, latest-s
 - `BloodWatch.Core`: Canonical contracts and models (`Snapshot`, `SnapshotItem`, `Metric`, `RegionRef`, `SourceRef`, `Event`, `Delivery`) and interfaces (`IDataSourceAdapter`, `IRule`, `INotifier`).
 - `BloodWatch.Adapters.Portugal`: Portugal adapter for `dador.pt` API (`/api/blood-reserves`, `/api/institutions`, `/api/sessions`).
 - `BloodWatch.Infrastructure`: EF Core + Npgsql persistence (`BloodWatchDbContext`), entities, and baseline migration.
-- `BloodWatch.Api`: HTTP read/write surface + standardized health/version endpoints + static `/app` subscription UI.
+- `BloodWatch.Api`: HTTP read/write surface + standardized health/version endpoints + static `/app` subscription UI (including `/app/copilot` internal panel).
 - `BloodWatch.Worker`: Background ingestion, status transition evaluation, and dispatch pipeline.
+- `BloodWatch.Copilot`: Reusable LLM provider abstraction (`ILLMClient`) + Ollama implementation.
 
 ## Runtime view
 
@@ -56,6 +57,10 @@ Seed data includes one source record:
   - `GET /api/v1/subscriptions/{id}/deliveries?limit=N`
 - Auth endpoint for subscription writes:
   - `POST /api/v1/auth/token` (returns short-lived JWT bearer token)
+- Internal Copilot endpoints (admin API key protected):
+  - `POST /api/v1/copilot/ask`
+  - `GET /api/v1/copilot/briefing/daily`
+  - `GET /api/v1/copilot/briefing/weekly`
 - Subscription `metric` is optional:
   - explicit metric key for exact matching
   - wildcard (`null` in API, persisted as `*`) to match all metrics in scope
@@ -64,6 +69,7 @@ Seed data includes one source record:
 ## Local startup behavior
 
 - Docker Compose manages `postgres`, `migrator`, `api`, and `worker`.
+- Copilot runtime (`ollama`, `ollama-model-init`) is profile-gated (`--profile copilot`) for on-demand usage.
 - `postgres` has a healthcheck (`pg_isready`) and persistent volume.
 - `migrator` applies EF migrations as a one-shot startup step.
 - `api` and `worker` depend on Postgres health and successful migration completion.

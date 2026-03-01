@@ -39,7 +39,19 @@ dotnet run --project src/BloodWatch.Api -- hash-password "<strong-password>"
 docker compose up -d --build
 ```
 
-3) Inspect services:
+3) Start Copilot on-demand (optional):
+
+```bash
+COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-on.sh
+```
+
+4) Disable Copilot and release memory:
+
+```bash
+COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-off.sh
+```
+
+5) Inspect services:
 
 ```bash
 docker compose ps
@@ -47,7 +59,7 @@ docker compose logs -f api
 docker compose logs -f worker
 ```
 
-4) Health checks:
+6) Health checks:
 
 - API live: `http://localhost:8080/health/live`
 - API ready: `http://localhost:8080/health/ready`
@@ -73,6 +85,9 @@ sudo chown -R "$USER":"$USER" /opt/bloodwatch
 - `deploy/Caddyfile` -> `/opt/bloodwatch/compose/Caddyfile`
 - `.env.example` -> `/opt/bloodwatch/compose/.env` (then fill real values)
 - `scripts/*.sh` -> `/opt/bloodwatch/compose/scripts/` (make executable)
+- recommended operational shortcuts:
+  - `/opt/bloodwatch/compose/scripts/copilot-on.sh`
+  - `/opt/bloodwatch/compose/scripts/copilot-off.sh`
 
 4) Configure DNS:
 - Create `A` record from your production domain to VPS public IP.
@@ -93,10 +108,18 @@ At minimum set:
 - `BloodWatch__JwtAuth__SigningKey`
 - `BloodWatch__JwtAuth__AdminEmail`
 - `BloodWatch__JwtAuth__AdminPasswordHash`
+- `BloodWatch__Copilot__Enabled` (`true` to enable internal Copilot)
+- `BloodWatch__Copilot__AdminApiKey` (required when Copilot is enabled)
+- `OLLAMA__BASE_URL`
+- `OLLAMA__MODEL`
+- `OLLAMA__MEM_LIMIT` (recommended on constrained hosts, example `2g`)
 - `CADDY_EMAIL`
 - `BLOODWATCH__TELEGRAM_BOT_TOKEN` (if Telegram delivery is enabled)
 
 Never commit this `.env` file.
+
+Recommended default on shared 4GB hosts:
+- `BloodWatch__Copilot__Enabled=false`
 
 Caddy host routing is fixed in [deploy/Caddyfile](../deploy/Caddyfile):
 - `bloodwatch.lighthousedev.uk` -> API
@@ -127,6 +150,13 @@ Automatic path (default):
 
 Manual fallback path:
 - run `/opt/bloodwatch/compose/scripts/deploy.sh vX.Y.Z` on the server.
+
+On-demand Copilot control in production:
+
+```bash
+COMPOSE_FILE=/opt/bloodwatch/compose/docker-compose.prod.yml ENV_FILE=/opt/bloodwatch/compose/.env /opt/bloodwatch/compose/scripts/copilot-on.sh
+COMPOSE_FILE=/opt/bloodwatch/compose/docker-compose.prod.yml ENV_FILE=/opt/bloodwatch/compose/.env /opt/bloodwatch/compose/scripts/copilot-off.sh
+```
 
 What it does:
 - pull API + Worker images
@@ -202,6 +232,10 @@ This ensures merges are blocked when required pipelines fail.
   - confirm ports `80/443` open
 - Auth token endpoint `503`:
   - missing JWT env values in `.env`
+- Copilot endpoints `503`:
+  - Copilot disabled or missing `BloodWatch__Copilot__AdminApiKey`
+  - Ollama unavailable or missing `OLLAMA__*` configuration
+  - on 4GB hosts, use `qwen2.5:0.5b` and run `ollama` only on-demand (`--profile copilot`)
 - Worker dispatch failures:
   - inspect `docker compose logs worker`
   - verify notifier secrets and webhook/chat targets

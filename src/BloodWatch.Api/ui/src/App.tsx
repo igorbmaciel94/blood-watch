@@ -54,6 +54,33 @@ type ApiError = {
   status?: number;
 };
 
+type CopilotDataBasisItem = {
+  queryId: string;
+  description: string;
+};
+
+type CopilotCitation = {
+  queryId: string;
+  resultIds: string[];
+};
+
+type CopilotAnswer = {
+  shortAnswer: string;
+  summaryBullets: string[];
+  dataBasis: CopilotDataBasisItem[];
+  citations: CopilotCitation[];
+  disclaimer: string;
+  generatedAtUtc: string;
+  model: string;
+};
+
+type CopilotBriefingResponse = {
+  briefingType: "daily" | "weekly";
+  windowStartUtc: string;
+  windowEndUtc: string;
+  answer: CopilotAnswer;
+};
+
 type AuthSession = {
   email: string;
   accessToken: string;
@@ -103,6 +130,19 @@ export function App() {
           session ? (
             <SubscriptionsPage
               session={session}
+              onLogout={(message) => handleLogout(message ?? "Session cleared.")}
+              onAuthExpired={() => handleLogout("Session expired. Login again.")}
+            />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/copilot"
+        element={
+          session ? (
+            <CopilotPage
               onLogout={(message) => handleLogout(message ?? "Session cleared.")}
               onAuthExpired={() => handleLogout("Session expired. Login again.")}
             />
@@ -220,6 +260,7 @@ type SubscriptionsPageProps = {
 };
 
 function SubscriptionsPage({ session, onLogout, onAuthExpired }: SubscriptionsPageProps) {
+  const navigate = useNavigate();
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [selectedSource, setSelectedSource] = useState("");
 
@@ -527,6 +568,7 @@ function SubscriptionsPage({ session, onLogout, onAuthExpired }: SubscriptionsPa
             </p>
           </div>
           <div className="hero-actions">
+            <button type="button" onClick={() => navigate("/copilot")}>Open Copilot</button>
             <button type="button" onClick={() => onLogout("Session cleared.")}>Sign out</button>
           </div>
         </div>
@@ -730,6 +772,248 @@ function SubscriptionsPage({ session, onLogout, onAuthExpired }: SubscriptionsPa
 
             {deliveries.length === 0 && !loadingDeliveries ? <p className="hint">No deliveries yet.</p> : null}
           </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+type CopilotPageProps = {
+  onLogout: (message?: string) => void;
+  onAuthExpired: () => void;
+};
+
+function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
+  const navigate = useNavigate();
+  const [sources, setSources] = useState<SourceItem[]>([]);
+  const [selectedSource, setSelectedSource] = useState("");
+  const [adminApiKey, setAdminApiKey] = useState("");
+  const [question, setQuestion] = useState("What is critical now and where?");
+  const [busyAsk, setBusyAsk] = useState(false);
+  const [busyBriefing, setBusyBriefing] = useState<null | "daily" | "weekly">(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<CopilotAnswer | null>(null);
+  const [windowLabel, setWindowLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadSources();
+  }, []);
+
+  async function loadSources() {
+    try {
+      const payload = await requestJson<{ items: SourceItem[] }>("/api/v1/sources");
+      setSources(payload.items);
+      if (payload.items.length > 0) {
+        setSelectedSource(payload.items[0].source);
+      }
+    } catch (error) {
+      if (isAuthError(error)) {
+        onAuthExpired();
+      } else {
+        setMessage(readError(error));
+      }
+    }
+  }
+
+  function getAdminHeader(): HeadersInit | null {
+    const normalized = adminApiKey.trim();
+    if (normalized.length === 0) {
+      setMessage("Admin API key is required.");
+      return null;
+    }
+
+    return { "X-Admin-Api-Key": normalized };
+  }
+
+  async function askCopilot() {
+    const adminHeader = getAdminHeader();
+    if (!adminHeader) {
+      return;
+    }
+
+    const normalizedQuestion = question.trim();
+    if (normalizedQuestion.length === 0) {
+      setMessage("Question is required.");
+      return;
+    }
+
+    setBusyAsk(true);
+    setMessage(null);
+    setWindowLabel(null);
+    try {
+      const payload = await requestJson<CopilotAnswer>("/api/v1/copilot/ask", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...adminHeader
+        },
+        body: JSON.stringify({
+          question: normalizedQuestion,
+          source: selectedSource || undefined
+        })
+      });
+      setAnswer(payload);
+    } catch (error) {
+      setAnswer(null);
+      setMessage(readError(error));
+    } finally {
+      setBusyAsk(false);
+    }
+  }
+
+  async function loadBriefing(type: "daily" | "weekly") {
+    const adminHeader = getAdminHeader();
+    if (!adminHeader) {
+      return;
+    }
+
+    setBusyBriefing(type);
+    setMessage(null);
+    try {
+      const payload = await requestJson<CopilotBriefingResponse>(`/api/v1/copilot/briefing/${type}`, {
+        headers: adminHeader
+      });
+      setAnswer(payload.answer);
+      setWindowLabel(
+        `${payload.briefingType.toUpperCase()} window: ${formatUtc(payload.windowStartUtc)} -> ${formatUtc(payload.windowEndUtc)}`
+      );
+    } catch (error) {
+      setAnswer(null);
+      setWindowLabel(null);
+      setMessage(readError(error));
+    } finally {
+      setBusyBriefing(null);
+    }
+  }
+
+  return (
+    <div className="page">
+      <header className="hero">
+        <div className="hero-row">
+          <div>
+            <p className="kicker">BloodWatch Console</p>
+            <h1>Copilot Internal</h1>
+            <p>
+              Internal read-only Copilot with guardrails. Requires <code>X-Admin-Api-Key</code> and returns structured
+              answers with citations.
+            </p>
+          </div>
+          <div className="hero-actions">
+            <button type="button" onClick={() => navigate("/subscriptions")}>Back to Subscriptions</button>
+            <button type="button" onClick={() => onLogout("Session cleared.")}>Sign out</button>
+          </div>
+        </div>
+      </header>
+
+      <main className="grid">
+        <section className="panel">
+          <h2>Ask Copilot</h2>
+          <form
+            className="stack"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void askCopilot();
+            }}
+          >
+            <label>
+              Source
+              <select value={selectedSource} onChange={(event) => setSelectedSource(event.target.value)}>
+                {sources.map((source) => (
+                  <option key={source.source} value={source.source}>
+                    {source.name} ({source.source})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Admin API key
+              <input
+                type="password"
+                value={adminApiKey}
+                onChange={(event) => setAdminApiKey(event.target.value)}
+                placeholder="X-Admin-Api-Key"
+                autoComplete="off"
+                required
+              />
+            </label>
+
+            <label>
+              Question
+              <textarea
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                rows={5}
+                placeholder="What changed since last week?"
+              />
+            </label>
+
+            <div className="actions">
+              <button type="submit" disabled={busyAsk || busyBriefing !== null}>
+                {busyAsk ? "Asking..." : "Ask"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadBriefing("daily")}
+                disabled={busyAsk || busyBriefing !== null}
+              >
+                {busyBriefing === "daily" ? "Loading..." : "Daily Briefing"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadBriefing("weekly")}
+                disabled={busyAsk || busyBriefing !== null}
+              >
+                {busyBriefing === "weekly" ? "Loading..." : "Weekly Briefing"}
+              </button>
+            </div>
+          </form>
+
+          <p className="hint">
+            Keep Copilot disabled by default in production and enable only for controlled windows on low-memory hosts.
+          </p>
+          {message ? <p className="error">{message}</p> : null}
+        </section>
+
+        <section className="panel">
+          <h2>Result</h2>
+          {!answer ? (
+            <p className="hint">No result yet. Ask a question or run a briefing.</p>
+          ) : (
+            <div className="stack">
+              <p><strong>{answer.shortAnswer}</strong></p>
+
+              {answer.summaryBullets.length > 0 ? (
+                <ul className="copilot-list">
+                  {answer.summaryBullets.map((item, index) => (
+                    <li key={`${index}-${item}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {windowLabel ? <p className="hint">{windowLabel}</p> : null}
+              <p className="hint">Model: {answer.model} • Generated: {formatUtc(answer.generatedAtUtc)}</p>
+              <p className="hint">{answer.disclaimer}</p>
+
+              <h3>Data Basis</h3>
+              <ul className="copilot-list">
+                {answer.dataBasis.map((entry) => (
+                  <li key={entry.queryId}>
+                    <code>{entry.queryId}</code> — {entry.description}
+                  </li>
+                ))}
+              </ul>
+
+              <h3>Citations</h3>
+              <ul className="copilot-list">
+                {answer.citations.map((entry) => (
+                  <li key={entry.queryId}>
+                    <code>{entry.queryId}</code> — {entry.resultIds.length > 0 ? entry.resultIds.join(", ") : "(none)"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       </main>
     </div>

@@ -2,8 +2,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 using BloodWatch.Api;
+using BloodWatch.Api.Copilot;
 using BloodWatch.Api.Options;
 using BloodWatch.Api.Services;
+using BloodWatch.Copilot;
+using BloodWatch.Copilot.Ollama;
+using BloodWatch.Copilot.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Mvc;
@@ -31,6 +35,38 @@ public static class ApplicationServiceCollectionExtensions
         services.AddOptions<BuildInfoOptions>()
             .BindConfiguration(BuildInfoOptions.SectionName);
 
+        services.AddOptions<CopilotOptions>()
+            .BindConfiguration(CopilotOptions.SectionName)
+            .ValidateOnStart();
+
+        services.AddOptions<OllamaOptions>()
+            .Configure<IConfiguration>((options, config) =>
+            {
+                options.BaseUrl = ResolveString(
+                    config[$"{OllamaOptions.SectionName}:BaseUrl"],
+                    "OLLAMA__BASE_URL",
+                    options.BaseUrl);
+
+                options.Model = ResolveString(
+                    config[$"{OllamaOptions.SectionName}:Model"],
+                    "OLLAMA__MODEL",
+                    options.Model);
+
+                options.TimeoutSeconds = ResolveInt(
+                    config[$"{OllamaOptions.SectionName}:TimeoutSeconds"],
+                    "OLLAMA__TIMEOUT_SECONDS",
+                    options.TimeoutSeconds,
+                    min: 1,
+                    max: 300);
+
+                options.MaxRetries = ResolveInt(
+                    config[$"{OllamaOptions.SectionName}:MaxRetries"],
+                    "OLLAMA__MAX_RETRIES",
+                    options.MaxRetries,
+                    min: 0,
+                    max: 5);
+            });
+
         services.AddOptions<ProductionRuntimeOptions>()
             .Configure<IConfiguration>((options, config) =>
             {
@@ -46,12 +82,18 @@ public static class ApplicationServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddSingleton<IValidateOptions<ProductionRuntimeOptions>, ProductionRuntimeOptionsValidator>();
+        services.AddSingleton<IValidateOptions<CopilotOptions>, CopilotOptionsValidator>();
 
         services.AddMemoryCache();
         services.AddProblemDetails();
 
         services.AddScoped<ISubscriptionService, SubscriptionService>();
         services.AddScoped<IReserveAnalyticsQueryService, ReserveAnalyticsQueryService>();
+        services.AddScoped<ICopilotService, CopilotService>();
+        services.AddScoped<CopilotAnalyticsTools>();
+        services.AddSingleton<CopilotGuardrailEvaluator>();
+        services.AddSingleton<CopilotIntentRouter>();
+        services.AddHttpClient<ILLMClient, OllamaLLMClient>();
 
         services.AddAuthentication(options =>
         {
@@ -125,6 +167,21 @@ public static class ApplicationServiceCollectionExtensions
                 });
             });
 
+            rateLimiterOptions.AddPolicy(ApiAuthConstants.CopilotRateLimitPolicyName, httpContext =>
+            {
+                var options = httpContext.RequestServices.GetRequiredService<IOptions<CopilotOptions>>().Value;
+                var permitLimitPerMinute = Math.Clamp(options.RateLimiting.PermitLimitPerMinute, 1, 10_000);
+                var queueLimit = Math.Clamp(options.RateLimiting.QueueLimit, 0, 10_000);
+
+                return RateLimitPartition.GetFixedWindowLimiter(ApiAuthConstants.CopilotRateLimitPolicyName, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = permitLimitPerMinute,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = queueLimit,
+                });
+            });
+
             rateLimiterOptions.OnRejected = async (context, cancellationToken) =>
             {
                 if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
@@ -164,31 +221,62 @@ public static class ApplicationServiceCollectionExtensions
                     Description = "JWT bearer token required for subscription endpoints.",
                 };
 
+                document.Components.SecuritySchemes[ApiAuthConstants.CopilotApiKeySecuritySchemeId] = new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.ApiKey,
+                    In = ParameterLocation.Header,
+                    Name = ApiAuthConstants.CopilotApiKeyHeaderName,
+                    Description = "Admin API key required for Copilot internal endpoints.",
+                };
+
                 return Task.CompletedTask;
             });
 
             options.AddOperationTransformer((operation, context, _) =>
             {
                 var relativePath = context.Description.RelativePath ?? string.Empty;
-                if (!relativePath.StartsWith("api/v1/subscriptions", StringComparison.OrdinalIgnoreCase))
+                var isSubscriptionEndpoint = relativePath.StartsWith("api/v1/subscriptions", StringComparison.OrdinalIgnoreCase);
+                var isCopilotEndpoint = relativePath.StartsWith("api/v1/copilot", StringComparison.OrdinalIgnoreCase);
+
+                if (!isSubscriptionEndpoint && !isCopilotEndpoint)
                 {
                     return Task.CompletedTask;
                 }
 
                 operation.Security ??= [];
-                operation.Security.Add(new OpenApiSecurityRequirement
+                if (isSubscriptionEndpoint)
                 {
-                    [
-                        new OpenApiSecurityScheme
-                        {
-                            Reference = new OpenApiReference
+                    operation.Security.Add(new OpenApiSecurityRequirement
+                    {
+                        [
+                            new OpenApiSecurityScheme
                             {
-                                Type = ReferenceType.SecurityScheme,
-                                Id = ApiAuthConstants.BearerSecuritySchemeId,
-                            },
-                        }
-                    ] = []
-                });
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.SecurityScheme,
+                                    Id = ApiAuthConstants.BearerSecuritySchemeId,
+                                },
+                            }
+                        ] = []
+                    });
+                }
+
+                if (isCopilotEndpoint)
+                {
+                    operation.Security.Add(new OpenApiSecurityRequirement
+                    {
+                        [
+                            new OpenApiSecurityScheme
+                            {
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.SecurityScheme,
+                                    Id = ApiAuthConstants.CopilotApiKeySecuritySchemeId,
+                                },
+                            }
+                        ] = []
+                    });
+                }
 
                 return Task.CompletedTask;
             });
@@ -216,5 +304,33 @@ public static class ApplicationServiceCollectionExtensions
 
         keyBytes = Encoding.UTF8.GetBytes(normalized);
         return keyBytes.Length >= 32;
+    }
+
+    private static string ResolveString(string? configValue, string envVarName, string fallback)
+    {
+        var normalizedEnv = Normalize(Environment.GetEnvironmentVariable(envVarName));
+        if (normalizedEnv is not null)
+        {
+            return normalizedEnv;
+        }
+
+        var normalizedConfig = Normalize(configValue);
+        return normalizedConfig ?? fallback;
+    }
+
+    private static int ResolveInt(string? configValue, string envVarName, int fallback, int min, int max)
+    {
+        var envValue = Environment.GetEnvironmentVariable(envVarName);
+        if (int.TryParse(envValue, out var envParsed))
+        {
+            return Math.Clamp(envParsed, min, max);
+        }
+
+        if (int.TryParse(configValue, out var configParsed))
+        {
+            return Math.Clamp(configParsed, min, max);
+        }
+
+        return Math.Clamp(fallback, min, max);
     }
 }

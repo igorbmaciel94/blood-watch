@@ -17,6 +17,29 @@ services:
       retries: 12
       start_period: 5s
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bloodwatch-ollama
+    profiles: ["copilot"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - bloodwatch_ollama_data:/root/.ollama
+    mem_limit: ${OLLAMA__MEM_LIMIT:-2g}
+    restart: unless-stopped
+
+  ollama-model-init:
+    image: ollama/ollama:latest
+    container_name: bloodwatch-ollama-model-init
+    profiles: ["copilot"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${OLLAMA__MODEL:-qwen2.5:0.5b}"]
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: "no"
+
   migrator:
     build:
       context: .
@@ -56,6 +79,12 @@ services:
       BloodWatch__JwtAuth__AccessTokenMinutes: ${BloodWatch__JwtAuth__AccessTokenMinutes:-15}
       BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail:-admin@example.com}
       BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash:-}
+      BloodWatch__Copilot__Enabled: ${BloodWatch__Copilot__Enabled:-false}
+      BloodWatch__Copilot__AdminApiKey: ${BloodWatch__Copilot__AdminApiKey:-}
+      OLLAMA__BASE_URL: ${OLLAMA__BASE_URL:-http://ollama:11434}
+      OLLAMA__MODEL: ${OLLAMA__MODEL:-qwen2.5:0.5b}
+      OLLAMA__TIMEOUT_SECONDS: ${OLLAMA__TIMEOUT_SECONDS:-30}
+      OLLAMA__MAX_RETRIES: ${OLLAMA__MAX_RETRIES:-2}
       BloodWatch__Build__Version: ${BloodWatch__Build__Version:-dev}
       BloodWatch__Build__Commit: ${BloodWatch__Build__Commit:-local}
       BloodWatch__Build__Date: ${BloodWatch__Build__Date:-1970-01-01T00:00:00Z}
@@ -122,3 +151,4 @@ services:
 volumes:
   bloodwatch_postgres_data:
   bloodwatch_pgadmin_data:
+  bloodwatch_ollama_data:

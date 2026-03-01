@@ -15,6 +15,7 @@
     <ProjectReference Include="..\BloodWatch.Core\BloodWatch.Core.csproj" />
     <ProjectReference Include="..\BloodWatch.Infrastructure\BloodWatch.Infrastructure.csproj" />
     <ProjectReference Include="..\BloodWatch.Adapters.Portugal\BloodWatch.Adapters.Portugal.csproj" />
+    <ProjectReference Include="..\BloodWatch.Copilot\BloodWatch.Copilot.csproj" />
   </ItemGroup>
 
 </Project>

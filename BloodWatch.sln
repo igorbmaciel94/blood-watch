@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BloodWatch.Adapters.Portuga
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BloodWatch.Core.Tests", "tests\BloodWatch.Core.Tests\BloodWatch.Core.Tests.csproj", "{D68E1E42-FB1D-47B3-88D7-928F34882A68}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BloodWatch.Copilot", "src\BloodWatch.Copilot\BloodWatch.Copilot.csproj", "{704F3B1C-C23A-499D-9B8A-8370F90DE980}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -99,6 +101,18 @@ Global
 		{D68E1E42-FB1D-47B3-88D7-928F34882A68}.Release|x64.Build.0 = Release|Any CPU
 		{D68E1E42-FB1D-47B3-88D7-928F34882A68}.Release|x86.ActiveCfg = Release|Any CPU
 		{D68E1E42-FB1D-47B3-88D7-928F34882A68}.Release|x86.Build.0 = Release|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Debug|x64.Build.0 = Debug|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Debug|x86.Build.0 = Debug|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Release|Any CPU.Build.0 = Release|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Release|x64.ActiveCfg = Release|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Release|x64.Build.0 = Release|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Release|x86.ActiveCfg = Release|Any CPU
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -110,5 +124,6 @@ Global
 		{783A96E9-4EB2-4B41-AD7B-E7A92B8E466B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{DB37AD0A-B93B-41D9-9554-45FDDB862DBD} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{D68E1E42-FB1D-47B3-88D7-928F34882A68} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{704F3B1C-C23A-499D-9B8A-8370F90DE980} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

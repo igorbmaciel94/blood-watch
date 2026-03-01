@@ -18,6 +18,29 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bloodwatch-ollama
+    profiles: ["copilot"]
+    ports:
+      - "10.0.0.1:11434:11434"
+    volumes:
+      - /opt/bloodwatch/data/ollama:/root/.ollama
+    mem_limit: ${OLLAMA__MEM_LIMIT:-2g}
+    restart: unless-stopped
+
+  ollama-model-init:
+    image: ollama/ollama:latest
+    container_name: bloodwatch-ollama-model-init
+    profiles: ["copilot"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${OLLAMA__MODEL:-qwen2.5:0.5b}"]
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: "no"
+
   migrator:
     image: ${BLOODWATCH_API_IMAGE:-ghcr.io/igorbmaciel/bloodwatch-api}:${BLOODWATCH_IMAGE_TAG}
     container_name: bloodwatch-migrator
@@ -32,6 +55,12 @@ services:
       BloodWatch__JwtAuth__AccessTokenMinutes: ${BloodWatch__JwtAuth__AccessTokenMinutes}
       BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail}
       BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash}
+      BloodWatch__Copilot__Enabled: ${BloodWatch__Copilot__Enabled:-false}
+      BloodWatch__Copilot__AdminApiKey: ${BloodWatch__Copilot__AdminApiKey}
+      OLLAMA__BASE_URL: ${OLLAMA__BASE_URL}
+      OLLAMA__MODEL: ${OLLAMA__MODEL}
+      OLLAMA__TIMEOUT_SECONDS: ${OLLAMA__TIMEOUT_SECONDS}
+      OLLAMA__MAX_RETRIES: ${OLLAMA__MAX_RETRIES}
       BloodWatch__Build__Version: ${BloodWatch__Build__Version}
       BloodWatch__Build__Commit: ${BloodWatch__Build__Commit}
       BloodWatch__Build__Date: ${BloodWatch__Build__Date}
@@ -53,6 +82,12 @@ services:
       BloodWatch__JwtAuth__AccessTokenMinutes: ${BloodWatch__JwtAuth__AccessTokenMinutes}
       BloodWatch__JwtAuth__AdminEmail: ${BloodWatch__JwtAuth__AdminEmail}
       BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash}
+      BloodWatch__Copilot__Enabled: ${BloodWatch__Copilot__Enabled:-false}
+      BloodWatch__Copilot__AdminApiKey: ${BloodWatch__Copilot__AdminApiKey}
+      OLLAMA__BASE_URL: ${OLLAMA__BASE_URL}
+      OLLAMA__MODEL: ${OLLAMA__MODEL}
+      OLLAMA__TIMEOUT_SECONDS: ${OLLAMA__TIMEOUT_SECONDS}
+      OLLAMA__MAX_RETRIES: ${OLLAMA__MAX_RETRIES}
       BloodWatch__Build__Version: ${BloodWatch__Build__Version}
       BloodWatch__Build__Commit: ${BloodWatch__Build__Commit}
       BloodWatch__Build__Date: ${BloodWatch__Build__Date}
