@@ -150,6 +150,7 @@ Automatic path (default):
 
 Manual fallback path:
 - run `/opt/bloodwatch/compose/scripts/deploy.sh vX.Y.Z` on the server.
+- `deploy.sh` now pins `BLOODWATCH_IMAGE_TAG=vX.Y.Z` into `/opt/bloodwatch/compose/.env` to avoid accidental fallback to `latest`.
 
 On-demand Copilot control in production (preferred via API/UI hard toggle):
 

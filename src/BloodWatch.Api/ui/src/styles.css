@@ -160,12 +160,18 @@ body {
   display: grid;
   justify-items: end;
   gap: 6px;
-  min-width: 260px;
+  min-width: 320px;
 }
 
 .hero-actions .hint {
   color: rgba(255, 247, 248, 0.9);
   margin: 0;
+}
+
+.hero-actions-buttons {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
 }
 
 .hero-actions button {
@@ -177,6 +183,113 @@ body {
 .hero-actions button:hover {
   border-color: #ffd3db;
   background: #fff;
+}
+
+.copilot-control-card {
+  width: min(340px, 100%);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 14px;
+  padding: 11px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.copilot-control-card .kicker {
+  margin: 0;
+}
+
+.copilot-control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.copilot-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.58rem;
+  border: 1px solid transparent;
+  font-weight: 700;
+}
+
+.copilot-status-pill.enabled {
+  color: #0f5c2e;
+  background: #dcfce8;
+  border-color: #87dbad;
+}
+
+.copilot-status-pill.disabled {
+  color: #7d1d28;
+  background: #ffe7ec;
+  border-color: #f4b7c2;
+}
+
+.copilot-status-pill.unknown {
+  color: #5f3a40;
+  background: #ffeef2;
+  border-color: #f8cfd7;
+}
+
+.copilot-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #fff4f6;
+  font-weight: 600;
+}
+
+.copilot-toggle {
+  position: relative;
+  width: 54px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.copilot-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.copilot-toggle-slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgba(255, 240, 244, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  transition: background 150ms ease;
+}
+
+.copilot-toggle-slider::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(30, 8, 12, 0.35);
+  transition: transform 150ms ease;
+}
+
+.copilot-toggle input:checked + .copilot-toggle-slider {
+  background: rgba(153, 255, 201, 0.55);
+}
+
+.copilot-toggle input:checked + .copilot-toggle-slider::before {
+  transform: translateX(24px);
+}
+
+.copilot-toggle input:disabled + .copilot-toggle-slider {
+  opacity: 0.62;
 }
 
 .kicker {
@@ -485,5 +598,9 @@ td:last-child {
   .hero-actions {
     justify-items: start;
     min-width: 0;
+  }
+
+  .hero-actions-buttons {
+    justify-items: start;
   }
 }

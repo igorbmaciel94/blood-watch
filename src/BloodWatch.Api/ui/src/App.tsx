@@ -797,7 +797,7 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
   const [question, setQuestion] = useState("What is critical now and where?");
   const [busyAsk, setBusyAsk] = useState(false);
   const [busyBriefing, setBusyBriefing] = useState<null | "daily" | "weekly">(null);
-  const [busyFeatureFlagAction, setBusyFeatureFlagAction] = useState<null | "status" | "enable" | "disable">(null);
+  const [busyFeatureFlagAction, setBusyFeatureFlagAction] = useState<null | "status" | "toggle">(null);
   const [message, setMessage] = useState<string | null>(null);
   const [answer, setAnswer] = useState<CopilotAnswer | null>(null);
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
@@ -823,10 +823,12 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
     }
   }
 
-  function getAdminHeader(): HeadersInit | null {
+  function getAdminHeader(showRequiredMessage = true): HeadersInit | null {
     const normalized = adminApiKey.trim();
     if (normalized.length === 0) {
-      setMessage("Admin API key is required.");
+      if (showRequiredMessage) {
+        setMessage("Admin API key is required.");
+      }
       return null;
     }
 
@@ -894,8 +896,8 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
     }
   }
 
-  async function loadFeatureFlagStatus() {
-    const adminHeader = getAdminHeader();
+  async function loadFeatureFlagStatus(showRequiredMessage = false) {
+    const adminHeader = getAdminHeader(showRequiredMessage);
     if (!adminHeader) {
       return;
     }
@@ -920,7 +922,7 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
       return;
     }
 
-    setBusyFeatureFlagAction(enabled ? "enable" : "disable");
+    setBusyFeatureFlagAction("toggle");
     setMessage(null);
     try {
       const payload = await requestJson<CopilotFeatureFlagResponse>("/api/v1/copilot/feature-flag", {
@@ -932,7 +934,7 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
         body: JSON.stringify({ enabled })
       });
       setFeatureFlagStatus(payload);
-      setMessage(enabled ? "Copilot runtime flag enabled." : "Copilot runtime flag disabled.");
+      setMessage(enabled ? "Copilot infrastructure enabled." : "Copilot infrastructure disabled.");
     } catch (error) {
       setMessage(readError(error));
     } finally {
@@ -953,8 +955,49 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
             </p>
           </div>
           <div className="hero-actions">
-            <button type="button" onClick={() => navigate("/subscriptions")}>Back to Subscriptions</button>
-            <button type="button" onClick={() => onLogout("Session cleared.")}>Sign out</button>
+            <section className="copilot-control-card">
+              <p className="kicker">Copilot Infra</p>
+              <div className="copilot-control-header">
+                <span
+                  className={`copilot-status-pill ${
+                    featureFlagStatus ? (featureFlagStatus.enabled ? "enabled" : "disabled") : "unknown"
+                  }`}
+                >
+                  {featureFlagStatus ? (featureFlagStatus.enabled ? "Enabled" : "Disabled") : "Unknown"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void loadFeatureFlagStatus(true)}
+                  disabled={busyFeatureFlagAction !== null || busyAsk || busyBriefing !== null}
+                >
+                  {busyFeatureFlagAction === "status" ? "Checking..." : "Refresh"}
+                </button>
+              </div>
+              <label className="copilot-toggle-row">
+                <span>{busyFeatureFlagAction === "toggle" ? "Applying..." : "Enable / Disable"}</span>
+                <span className="copilot-toggle">
+                  <input
+                    type="checkbox"
+                    checked={featureFlagStatus?.enabled ?? false}
+                    disabled={busyFeatureFlagAction !== null || busyAsk || busyBriefing !== null}
+                    onChange={(event) => {
+                      void setFeatureFlag(event.target.checked);
+                    }}
+                  />
+                  <span className="copilot-toggle-slider" />
+                </span>
+              </label>
+              <p className="hint">
+                {featureFlagStatus
+                  ? `Status updated: ${formatUtc(featureFlagStatus.updatedAtUtc)}`
+                  : "Type admin key and click Refresh."}
+              </p>
+            </section>
+
+            <div className="hero-actions-buttons">
+              <button type="button" onClick={() => navigate("/subscriptions")}>Back to Subscriptions</button>
+              <button type="button" onClick={() => onLogout("Session cleared.")}>Sign out</button>
+            </div>
           </div>
         </div>
       </header>
@@ -986,6 +1029,11 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
                 type="password"
                 value={adminApiKey}
                 onChange={(event) => setAdminApiKey(event.target.value)}
+                onBlur={() => {
+                  if (adminApiKey.trim().length > 0) {
+                    void loadFeatureFlagStatus();
+                  }
+                }}
                 placeholder="X-Admin-Api-Key"
                 autoComplete="off"
                 required
@@ -1003,27 +1051,6 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
             </label>
 
             <div className="actions">
-              <button
-                type="button"
-                onClick={() => void loadFeatureFlagStatus()}
-                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
-              >
-                {busyFeatureFlagAction === "status" ? "Checking..." : "Status"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void setFeatureFlag(true)}
-                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
-              >
-                {busyFeatureFlagAction === "enable" ? "Enabling..." : "Enable Copilot"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void setFeatureFlag(false)}
-                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
-              >
-                {busyFeatureFlagAction === "disable" ? "Disabling..." : "Disable Copilot"}
-              </button>
               <button type="submit" disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}>
                 {busyAsk ? "Asking..." : "Ask"}
               </button>
@@ -1045,15 +1072,8 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
           </form>
 
           <p className="hint">
-            Use Enable/Disable to hard-toggle Ollama (real memory savings) during controlled windows on low-memory hosts.
+            Use the top toggle to hard-toggle Ollama (real memory savings) during controlled windows on low-memory hosts.
           </p>
-          {featureFlagStatus ? (
-            <p className="hint">
-              Infrastructure status: <strong>{featureFlagStatus.enabled ? "enabled" : "disabled"}</strong> • configured default:{" "}
-              <strong>{featureFlagStatus.configuredEnabled ? "enabled" : "disabled"}</strong> • updated:{" "}
-              {formatUtc(featureFlagStatus.updatedAtUtc)}
-            </p>
-          ) : null}
           {message ? <p className="error">{message}</p> : null}
         </section>
 
