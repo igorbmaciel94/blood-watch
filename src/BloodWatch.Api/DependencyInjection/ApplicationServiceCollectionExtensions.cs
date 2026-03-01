@@ -213,6 +213,13 @@ public static class ApplicationServiceCollectionExtensions
             {
                 document.Components ??= new OpenApiComponents();
                 document.Components.SecuritySchemes ??= new Dictionary<string, OpenApiSecurityScheme>(StringComparer.Ordinal);
+                document.Servers =
+                [
+                    new OpenApiServer
+                    {
+                        Url = "/",
+                    }
+                ];
 
                 document.Components.SecuritySchemes[ApiAuthConstants.BearerSecuritySchemeId] = new OpenApiSecurityScheme
                 {

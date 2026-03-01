@@ -14,6 +14,7 @@ public sealed class DockerCopilotInfrastructureController(
     IOptions<OllamaOptions> ollamaOptions,
     ILogger<DockerCopilotInfrastructureController> logger) : ICopilotInfrastructureController
 {
+    private const string DockerSocketPath = "/var/run/docker.sock";
     private static readonly HttpClient DockerClient = CreateDockerClient();
 
     private readonly CopilotOptions _copilotOptions = copilotOptions.Value;
@@ -22,6 +23,14 @@ public sealed class DockerCopilotInfrastructureController(
 
     public async Task<ServiceResult<CopilotFeatureFlagResponse>> GetStatusAsync(CancellationToken cancellationToken)
     {
+        if (!File.Exists(DockerSocketPath))
+        {
+            return ServiceResult<CopilotFeatureFlagResponse>.Failure(
+                StatusCodes.Status503ServiceUnavailable,
+                "Service unavailable",
+                "Docker socket is not mounted. Unable to inspect Copilot infrastructure status.");
+        }
+
         try
         {
             var containerRunning = await IsOllamaContainerRunningAsync(cancellationToken);
@@ -59,7 +68,7 @@ public sealed class DockerCopilotInfrastructureController(
                 "Copilot is disabled in configuration. Enable BloodWatch:Copilot:Enabled first.");
         }
 
-        if (!File.Exists("/var/run/docker.sock"))
+        if (!File.Exists(DockerSocketPath))
         {
             return ServiceResult<CopilotFeatureFlagResponse>.Failure(
                 StatusCodes.Status503ServiceUnavailable,

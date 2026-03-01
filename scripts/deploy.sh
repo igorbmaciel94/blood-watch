@@ -15,9 +15,36 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
+upsert_env_var() {
+  local key="$1"
+  local value="$2"
+  local tmp_file
+
+  tmp_file="$(mktemp)"
+
+  awk -v key="${key}" -v value="${value}" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 {
+      print key "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END {
+      if (updated == 0) {
+        print key "=" value
+      }
+    }
+  ' "${ENV_FILE}" > "${tmp_file}"
+
+  mv "${tmp_file}" "${ENV_FILE}"
+}
+
 if [[ $# -gt 0 ]]; then
   export BLOODWATCH_IMAGE_TAG="$1"
   echo "Deploying BLOODWATCH_IMAGE_TAG=${BLOODWATCH_IMAGE_TAG}"
+  upsert_env_var "BLOODWATCH_IMAGE_TAG" "${BLOODWATCH_IMAGE_TAG}"
+  echo "Pinned BLOODWATCH_IMAGE_TAG=${BLOODWATCH_IMAGE_TAG} in ${ENV_FILE}"
 fi
 
 if [[ -n "${BLOODWATCH_IMAGE_TAG:-}" && -z "${BloodWatch__Build__Version:-}" ]]; then
