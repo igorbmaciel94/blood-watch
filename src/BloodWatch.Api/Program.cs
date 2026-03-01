@@ -71,6 +71,7 @@ app.MapGet("/version", (IOptions<BuildInfoOptions> buildInfoAccessor) =>
 app.MapPublicReadEndpoints();
 app.MapSubscriptionAuthEndpoints();
 app.MapSubscriptionEndpoints();
+app.MapCopilotEndpoints();
 app.MapFallbackToFile("/app", "app/index.html");
 app.MapFallbackToFile("/app/{*path:nonfile}", "app/index.html");
 

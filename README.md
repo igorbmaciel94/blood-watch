@@ -34,12 +34,25 @@ docker compose up --build
 
 This starts `postgres`, `migrator`, `api`, `worker`, and `pgadmin`.
 
+3) Copilot on-demand (optional):
+
+```bash
+COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-on.sh
+```
+
+To disable again:
+
+```bash
+COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-off.sh
+```
+
 ## Local URLs
 
 - API root: [http://localhost:8080/](http://localhost:8080/)
 - API docs: [http://localhost:8080/docs](http://localhost:8080/docs)
 - API OpenAPI: [http://localhost:8080/openapi/v1.json](http://localhost:8080/openapi/v1.json)
 - Subscription UI: [http://localhost:8080/app](http://localhost:8080/app)
+- Copilot UI: [http://localhost:8080/app/copilot](http://localhost:8080/app/copilot)
 - API liveness: [http://localhost:8080/health/live](http://localhost:8080/health/live)
 - API readiness: [http://localhost:8080/health/ready](http://localhost:8080/health/ready)
 - API version: [http://localhost:8080/version](http://localhost:8080/version)
@@ -53,9 +66,21 @@ This starts `postgres`, `migrator`, `api`, `worker`, and `pgadmin`.
 
 - Public read endpoints remain rate limited.
 - Subscription endpoints require `Authorization: Bearer <token>`.
+- Copilot internal endpoints require `X-Admin-Api-Key`.
 - Token issuance endpoint:
   - `POST /api/v1/auth/token`
   - Body: `{ "email": "...", "password": "..." }`
+
+## Copilot v0 (Internal)
+
+When `BloodWatch__Copilot__Enabled=true`, API exposes:
+- `POST /api/v1/copilot/ask`
+- `GET /api/v1/copilot/briefing/daily`
+- `GET /api/v1/copilot/briefing/weekly`
+
+Copilot is read-only and powered by Ollama (`OLLAMA__BASE_URL`, `OLLAMA__MODEL`).
+
+For low-memory hosts (4GB), keep Copilot disabled by default and run Ollama only in the `copilot` profile when needed.
 
 ## Production Deployment Model
 

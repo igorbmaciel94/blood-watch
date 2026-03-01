@@ -247,13 +247,15 @@ label {
 
 input,
 select,
+textarea,
 button,
 table {
   font-family: inherit;
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border-radius: 10px;
   border: 1px solid var(--line);
@@ -263,10 +265,15 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+textarea {
+  resize: vertical;
 }
 
 .actions {
@@ -395,6 +402,13 @@ button:disabled {
   color: var(--muted);
   max-width: 400px;
   overflow-wrap: anywhere;
+}
+
+.copilot-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
 }
 
 .health {

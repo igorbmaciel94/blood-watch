@@ -16,6 +16,7 @@ Required sensitive values include:
 - `BloodWatch__JwtAuth__SigningKey`
 - `BloodWatch__JwtAuth__AdminEmail`
 - `BloodWatch__JwtAuth__AdminPasswordHash`
+- `BloodWatch__Copilot__AdminApiKey` (when Copilot is enabled)
 - database credentials (`POSTGRES_*` or `ConnectionStrings__BloodWatch`)
 - `BLOODWATCH__TELEGRAM_BOT_TOKEN`
 - any notifier-specific credentials
@@ -47,7 +48,16 @@ Required sensitive values include:
   - password hashes
   - bearer tokens
   - raw webhook secrets
+  - Copilot admin API key
 - Notification targets are masked in logs where applicable.
+
+## Copilot Guardrails
+
+- Copilot endpoints are read-only and admin-key protected.
+- Copilot rejects requests for secrets/credentials and write actions.
+- Copilot rejects prompt-injection attempts (`ignore rules`, `developer mode`, `decode and obey` patterns).
+- Copilot rejects harmful instruction requests and sexual content involving minors.
+- Copilot payloads/responses must not expose `email`, `phone`, `mobile_phone`, webhook URLs, or raw tokens.
 
 ## Data Minimization
 
