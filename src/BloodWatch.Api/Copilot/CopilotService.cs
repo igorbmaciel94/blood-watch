@@ -15,6 +15,7 @@ public sealed class CopilotService(
     CopilotAnalyticsTools analyticsTools,
     CopilotGuardrailEvaluator guardrailEvaluator,
     CopilotIntentRouter intentRouter,
+    ICopilotFeatureFlagState featureFlagState,
     ILLMClient llmClient,
     IOptions<CopilotOptions> copilotOptions,
     ILogger<CopilotService> logger,
@@ -28,6 +29,7 @@ public sealed class CopilotService(
     private readonly CopilotAnalyticsTools _analyticsTools = analyticsTools;
     private readonly CopilotGuardrailEvaluator _guardrailEvaluator = guardrailEvaluator;
     private readonly CopilotIntentRouter _intentRouter = intentRouter;
+    private readonly ICopilotFeatureFlagState _featureFlagState = featureFlagState;
     private readonly ILLMClient _llmClient = llmClient;
     private readonly CopilotOptions _options = copilotOptions.Value;
     private readonly ILogger<CopilotService> _logger = logger;
@@ -35,7 +37,7 @@ public sealed class CopilotService(
 
     public async Task<ServiceResult<CopilotAnswerResponse>> AskAsync(CopilotAskRequest request, CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
+        if (!_featureFlagState.IsEnabled)
         {
             return ServiceResult<CopilotAnswerResponse>.Failure(
                 StatusCodes.Status503ServiceUnavailable,
@@ -99,7 +101,7 @@ public sealed class CopilotService(
 
     public async Task<ServiceResult<CopilotBriefingResponse>> GetDailyBriefingAsync(CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
+        if (!_featureFlagState.IsEnabled)
         {
             return ServiceResult<CopilotBriefingResponse>.Failure(
                 StatusCodes.Status503ServiceUnavailable,
@@ -148,7 +150,7 @@ public sealed class CopilotService(
 
     public async Task<ServiceResult<CopilotBriefingResponse>> GetWeeklyBriefingAsync(CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
+        if (!_featureFlagState.IsEnabled)
         {
             return ServiceResult<CopilotBriefingResponse>.Failure(
                 StatusCodes.Status503ServiceUnavailable,

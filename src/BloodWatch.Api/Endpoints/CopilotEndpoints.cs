@@ -45,6 +45,24 @@ public static class CopilotEndpoints
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
             .WithOpenApi();
 
+        group.MapGet("/status", GetStatusAsync)
+            .WithName("GetCopilotStatus")
+            .WithSummary("Get Copilot runtime status.")
+            .Produces<CopilotFeatureFlagResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .WithOpenApi();
+
+        group.MapPost("/feature-flag", SetFeatureFlagAsync)
+            .WithName("SetCopilotFeatureFlag")
+            .WithSummary("Enable or disable Copilot runtime feature flag.")
+            .Produces<CopilotFeatureFlagResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .WithOpenApi();
+
         return app;
     }
 
@@ -55,7 +73,7 @@ public static class CopilotEndpoints
         ICopilotService copilotService,
         CancellationToken cancellationToken)
     {
-        var authFailure = Authorize(httpContext, copilotOptions.Value);
+        var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
         if (authFailure is not null)
         {
             return authFailure;
@@ -76,7 +94,7 @@ public static class CopilotEndpoints
         ICopilotService copilotService,
         CancellationToken cancellationToken)
     {
-        var authFailure = Authorize(httpContext, copilotOptions.Value);
+        var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
         if (authFailure is not null)
         {
             return authFailure;
@@ -97,7 +115,7 @@ public static class CopilotEndpoints
         ICopilotService copilotService,
         CancellationToken cancellationToken)
     {
-        var authFailure = Authorize(httpContext, copilotOptions.Value);
+        var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
         if (authFailure is not null)
         {
             return authFailure;
@@ -112,19 +130,38 @@ public static class CopilotEndpoints
         return TypedResults.Ok(result.Value);
     }
 
-    private static IResult? Authorize(HttpContext httpContext, CopilotOptions options)
+    private static IResult GetStatusAsync(
+        HttpContext httpContext,
+        IOptions<CopilotOptions> copilotOptions,
+        ICopilotFeatureFlagState featureFlagState)
     {
-        if (!options.Enabled)
+        var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
+        if (authFailure is not null)
         {
-            return TypedResults.Problem(new ProblemDetails
-            {
-                Status = StatusCodes.Status503ServiceUnavailable,
-                Title = "Service unavailable",
-                Detail = "Copilot is disabled.",
-                Type = "https://httpstatuses.com/503",
-            });
+            return authFailure;
         }
 
+        return TypedResults.Ok(BuildFeatureFlagResponse(copilotOptions.Value, featureFlagState));
+    }
+
+    private static IResult SetFeatureFlagAsync(
+        CopilotFeatureFlagRequest request,
+        HttpContext httpContext,
+        IOptions<CopilotOptions> copilotOptions,
+        ICopilotFeatureFlagState featureFlagState)
+    {
+        var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
+        if (authFailure is not null)
+        {
+            return authFailure;
+        }
+
+        featureFlagState.SetEnabled(request.Enabled);
+        return TypedResults.Ok(BuildFeatureFlagResponse(copilotOptions.Value, featureFlagState));
+    }
+
+    private static IResult? AuthorizeAdminKey(HttpContext httpContext, CopilotOptions options)
+    {
         var expectedApiKey = Normalize(options.AdminApiKey);
         if (expectedApiKey is null)
         {
@@ -155,6 +192,14 @@ public static class CopilotEndpoints
                          && CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes);
 
         return authorized ? null : UnauthorizedProblem();
+    }
+
+    private static CopilotFeatureFlagResponse BuildFeatureFlagResponse(CopilotOptions options, ICopilotFeatureFlagState featureFlagState)
+    {
+        return new CopilotFeatureFlagResponse(
+            Enabled: featureFlagState.IsEnabled,
+            ConfiguredEnabled: options.Enabled,
+            UpdatedAtUtc: featureFlagState.UpdatedAtUtc);
     }
 
     private static IResult UnauthorizedProblem()

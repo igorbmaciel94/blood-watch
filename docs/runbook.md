@@ -158,6 +158,18 @@ COMPOSE_FILE=/opt/bloodwatch/compose/docker-compose.prod.yml ENV_FILE=/opt/blood
 COMPOSE_FILE=/opt/bloodwatch/compose/docker-compose.prod.yml ENV_FILE=/opt/bloodwatch/compose/.env /opt/bloodwatch/compose/scripts/copilot-off.sh
 ```
 
+After Ollama is up, you can toggle Copilot runtime enable/disable from `/app/copilot` (buttons `Enable Copilot` / `Disable Copilot`) or via API:
+
+```bash
+curl -sS -X GET "https://bloodwatch.lighthousedev.uk/api/v1/copilot/status" \
+  -H "X-Admin-Api-Key: <admin-key>"
+
+curl -sS -X POST "https://bloodwatch.lighthousedev.uk/api/v1/copilot/feature-flag" \
+  -H "X-Admin-Api-Key: <admin-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true}'
+```
+
 What it does:
 - pull API + Worker images
 - run one-shot migrator
