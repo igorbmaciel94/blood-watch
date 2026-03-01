@@ -946,15 +946,13 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
     <div className="page">
       <header className="hero">
         <div className="hero-row">
-          <div>
+          <div className="hero-copy">
             <p className="kicker">BloodWatch Console</p>
             <h1>Copilot Internal</h1>
             <p>
               Internal read-only Copilot with guardrails. Requires <code>X-Admin-Api-Key</code> and returns structured
               answers with citations.
             </p>
-          </div>
-          <div className="hero-actions">
             <section className="copilot-control-card">
               <p className="kicker">Copilot Infra</p>
               <div className="copilot-control-header">
@@ -1009,7 +1007,8 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
                   : "Type admin key and click Refresh."}
               </p>
             </section>
-
+          </div>
+          <div className="hero-actions">
             <div className="hero-actions-buttons">
               <button type="button" onClick={() => navigate("/subscriptions")}>Back to Subscriptions</button>
               <button type="button" onClick={() => onLogout("Session cleared.")}>Sign out</button>
