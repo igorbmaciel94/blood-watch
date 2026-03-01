@@ -1,0 +1,43 @@
+{
+	email {$CADDY_EMAIL}
+}
+
+bloodwatch.lighthousedev.uk {
+	encode zstd gzip
+	reverse_proxy api:8080
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+cost.lighthousedev.uk {
+	encode zstd gzip
+
+	# compat temporaria para frontend antigo
+	@api_dup path /api/api/*
+	handle @api_dup {
+		uri strip_prefix /api
+		reverse_proxy host.docker.internal:18081
+	}
+
+	@api path /api/*
+	reverse_proxy @api host.docker.internal:18081
+
+	reverse_proxy host.docker.internal:18080
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+lighthousedev.uk, www.lighthousedev.uk {
+	redir https://bloodwatch.lighthousedev.uk{uri} permanent
+
+	log {
+		output stdout
+		format json
+	}
+}
