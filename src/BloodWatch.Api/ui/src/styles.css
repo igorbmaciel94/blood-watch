@@ -152,20 +152,28 @@ body {
 .hero-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 16px;
+}
+
+.hero-copy {
+  display: grid;
+  gap: 10px;
+  align-content: end;
+  max-width: 760px;
+}
+
+.hero-copy h1,
+.hero-copy p {
+  margin: 0;
 }
 
 .hero-actions {
   display: grid;
   justify-items: end;
-  gap: 6px;
-  min-width: 320px;
-}
-
-.hero-actions .hint {
-  color: rgba(255, 247, 248, 0.9);
-  margin: 0;
+  align-content: end;
+  gap: 8px;
+  min-width: 240px;
 }
 
 .hero-actions-buttons {
@@ -610,6 +618,10 @@ td:last-child {
 @media (max-width: 900px) {
   .hero-row {
     flex-direction: column;
+  }
+
+  .hero-copy {
+    max-width: none;
   }
 
   .hero-actions {
