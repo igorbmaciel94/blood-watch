@@ -151,6 +151,7 @@ Automatic path (default):
 Manual fallback path:
 - run `/opt/bloodwatch/compose/scripts/deploy.sh vX.Y.Z` on the server.
 - `deploy.sh` now pins `BLOODWATCH_IMAGE_TAG=vX.Y.Z` into `/opt/bloodwatch/compose/.env` to avoid accidental fallback to `latest`.
+- `deploy.sh` now also detects `/var/run/docker.sock` group and writes `HOST_DOCKER_GID` into `/opt/bloodwatch/compose/.env` so API can control Ollama without running as root.
 
 On-demand Copilot control in production (preferred via API/UI hard toggle):
 

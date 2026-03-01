@@ -72,6 +72,8 @@ services:
   api:
     image: ${BLOODWATCH_API_IMAGE:-ghcr.io/igorbmaciel/bloodwatch-api}:${BLOODWATCH_IMAGE_TAG}
     container_name: bloodwatch-api
+    group_add:
+      - "${HOST_DOCKER_GID:-998}"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
