@@ -206,6 +206,23 @@ body {
   gap: 10px;
 }
 
+.copilot-control-key {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  color: #fff4f6;
+  font-size: 0.84rem;
+}
+
+.copilot-control-key span {
+  font-weight: 700;
+}
+
+.copilot-control-key input {
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.95);
+}
+
 .copilot-status-pill {
   display: inline-flex;
   align-items: center;
