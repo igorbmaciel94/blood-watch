@@ -67,7 +67,7 @@ When `BloodWatch__Copilot__Enabled=true`, API exposes:
 - `GET /api/v1/copilot/briefing/weekly`
 
 Copilot is read-only and powered by Ollama (`OLLAMA__BASE_URL`, `OLLAMA__MODEL`).
-The recommended default model is `qwen3.5:2b`, with runtime knobs `OLLAMA__KEEP_ALIVE` and `OLLAMA__NUM_CTX`.
+The recommended default model is `qwen2.5:0.5b`, with runtime knobs `OLLAMA__KEEP_ALIVE` and `OLLAMA__NUM_CTX`.
 
 ## Production Deployment Model
 

@@ -107,7 +107,7 @@ Never commit this `.env` file.
 
 Recommended default on shared 4GB hosts:
 - `BloodWatch__Copilot__Enabled=false`
-- `OLLAMA__MODEL=qwen3.5:2b`
+- `OLLAMA__MODEL=qwen2.5:0.5b`
 
 Caddy host routing is fixed in [deploy/Caddyfile](../deploy/Caddyfile):
 - `bloodwatch.lighthousedev.uk` -> API
@@ -219,7 +219,7 @@ This ensures merges are blocked when required pipelines fail.
 - Copilot endpoints `503`:
   - Copilot disabled or missing `BloodWatch__Copilot__AdminApiKey`
   - Ollama unavailable or missing `OLLAMA__*` configuration
-  - on 4GB hosts, use `qwen3.5:2b` and tune `OLLAMA__KEEP_ALIVE` / `OLLAMA__NUM_CTX`
+  - on 4GB hosts, use `qwen2.5:0.5b` and tune `OLLAMA__KEEP_ALIVE` / `OLLAMA__NUM_CTX`
 - Worker dispatch failures:
   - inspect `docker compose logs worker`
   - verify notifier secrets and webhook/chat targets
