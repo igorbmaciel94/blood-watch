@@ -32,19 +32,7 @@ dotnet run --project src/BloodWatch.Api -- hash-password "<your-strong-password>
 docker compose up --build
 ```
 
-This starts `postgres`, `migrator`, `api`, `worker`, and `pgadmin`.
-
-3) Copilot on-demand (optional):
-
-```bash
-COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-on.sh
-```
-
-To disable again:
-
-```bash
-COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-off.sh
-```
+This starts `postgres`, `ollama`, `migrator`, `api`, `worker`, and `pgadmin`.
 
 ## Local URLs
 
@@ -77,13 +65,9 @@ When `BloodWatch__Copilot__Enabled=true`, API exposes:
 - `POST /api/v1/copilot/ask`
 - `GET /api/v1/copilot/briefing/daily`
 - `GET /api/v1/copilot/briefing/weekly`
-- `GET /api/v1/copilot/status`
-- `POST /api/v1/copilot/feature-flag`
 
 Copilot is read-only and powered by Ollama (`OLLAMA__BASE_URL`, `OLLAMA__MODEL`).
-`/status` and `/feature-flag` can be used from `/app/copilot` to hard-toggle Ollama (start/stop container) for real RAM savings.
-
-For low-memory hosts (4GB), keep Copilot off by default and enable only in controlled windows.
+The recommended default model is `qwen3.5:2b`, with runtime knobs `OLLAMA__KEEP_ALIVE` and `OLLAMA__NUM_CTX`.
 
 ## Production Deployment Model
 

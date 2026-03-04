@@ -30,31 +30,6 @@ public sealed class CopilotOptionsValidator(IOptions<OllamaOptions> ollamaOption
             errors.Add("BloodWatch:Copilot:DefaultSource is required when Copilot is enabled.");
         }
 
-        var operationTimeout = options.Control.OperationTimeoutSeconds;
-        if (operationTimeout is < 5 or > 300)
-        {
-            errors.Add("BloodWatch:Copilot:Control:OperationTimeoutSeconds must be between 5 and 300.");
-        }
-
-        var healthProbeTimeout = options.Control.HealthProbeTimeoutSeconds;
-        if (healthProbeTimeout is < 2 or > 120)
-        {
-            errors.Add("BloodWatch:Copilot:Control:HealthProbeTimeoutSeconds must be between 2 and 120.");
-        }
-
-        if (options.Control.Enabled)
-        {
-            if (string.IsNullOrWhiteSpace(options.Control.OllamaContainerName))
-            {
-                errors.Add("BloodWatch:Copilot:Control:OllamaContainerName is required when control is enabled.");
-            }
-
-            if (string.IsNullOrWhiteSpace(options.Control.OllamaModelInitContainerName))
-            {
-                errors.Add("BloodWatch:Copilot:Control:OllamaModelInitContainerName is required when control is enabled.");
-            }
-        }
-
         var ollama = _ollamaOptions.Value;
         if (string.IsNullOrWhiteSpace(ollama.BaseUrl))
         {

@@ -46,24 +46,6 @@ public static class CopilotEndpoints
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
             .WithOpenApi();
 
-        group.MapGet("/status", GetStatusAsync)
-            .WithName("GetCopilotStatus")
-            .WithSummary("Get Copilot infrastructure status (Ollama hard-toggle).")
-            .Produces<CopilotFeatureFlagResponse>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status401Unauthorized)
-            .ProducesProblem(StatusCodes.Status429TooManyRequests)
-            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
-            .WithOpenApi();
-
-        group.MapPost("/feature-flag", SetFeatureFlagAsync)
-            .WithName("SetCopilotFeatureFlag")
-            .WithSummary("Enable or disable Copilot infrastructure (starts/stops Ollama container).")
-            .Produces<CopilotFeatureFlagResponse>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status401Unauthorized)
-            .ProducesProblem(StatusCodes.Status429TooManyRequests)
-            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
-            .WithOpenApi();
-
         return app;
     }
 
@@ -131,39 +113,6 @@ public static class CopilotEndpoints
         return TypedResults.Ok(result.Value);
     }
 
-    private static async Task<IResult> GetStatusAsync(
-        HttpContext httpContext,
-        IOptions<CopilotOptions> copilotOptions,
-        ICopilotInfrastructureController infrastructureController,
-        CancellationToken cancellationToken)
-    {
-        var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
-        if (authFailure is not null)
-        {
-            return authFailure;
-        }
-
-        var result = await infrastructureController.GetStatusAsync(cancellationToken);
-        return HandleControllerResult(result);
-    }
-
-    private static async Task<IResult> SetFeatureFlagAsync(
-        CopilotFeatureFlagRequest request,
-        HttpContext httpContext,
-        IOptions<CopilotOptions> copilotOptions,
-        ICopilotInfrastructureController infrastructureController,
-        CancellationToken cancellationToken)
-    {
-        var authFailure = AuthorizeAdminKey(httpContext, copilotOptions.Value);
-        if (authFailure is not null)
-        {
-            return authFailure;
-        }
-
-        var result = await infrastructureController.SetEnabledAsync(request.Enabled, cancellationToken);
-        return HandleControllerResult(result);
-    }
-
     private static IResult? AuthorizeAdminKey(HttpContext httpContext, CopilotOptions options)
     {
         var expectedApiKey = Normalize(options.AdminApiKey);
@@ -196,16 +145,6 @@ public static class CopilotEndpoints
                          && CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes);
 
         return authorized ? null : UnauthorizedProblem();
-    }
-
-    private static IResult HandleControllerResult(ServiceResult<CopilotFeatureFlagResponse> result)
-    {
-        if (!result.IsSuccess)
-        {
-            return EndpointResultFactory.Problem(result.Error!);
-        }
-
-        return TypedResults.Ok(result.Value);
     }
 
     private static IResult UnauthorizedProblem()

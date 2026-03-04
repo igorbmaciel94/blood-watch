@@ -6,9 +6,13 @@ public sealed class OllamaOptions
 
     public string BaseUrl { get; set; } = "http://localhost:11434";
 
-    public string Model { get; set; } = "llama3.1";
+    public string Model { get; set; } = "qwen3.5:2b";
 
     public int TimeoutSeconds { get; set; } = 30;
 
     public int MaxRetries { get; set; } = 2;
+
+    public string KeepAlive { get; set; } = "2m";
+
+    public int NumCtx { get; set; } = 4096;
 }
