@@ -443,7 +443,7 @@ public sealed class CopilotApiEndpointsTests
                     ["BloodWatch:Copilot:RateLimiting:PermitLimitPerMinute"] = "1000",
                     ["BloodWatch:Copilot:RateLimiting:QueueLimit"] = "0",
                     ["Ollama:BaseUrl"] = "http://localhost:11434",
-                    ["Ollama:Model"] = "qwen3.5:2b",
+                    ["Ollama:Model"] = "qwen2.5:0.5b",
                     ["Ollama:TimeoutSeconds"] = "5",
                     ["Ollama:MaxRetries"] = "0",
                     ["Ollama:KeepAlive"] = "2m",
