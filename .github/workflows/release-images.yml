@@ -87,8 +87,6 @@ jobs:
           install -m 0644 deploy/docker-compose.prod.yml "${compose_dir}/docker-compose.prod.yml"
           install -m 0644 deploy/Caddyfile "${compose_dir}/Caddyfile"
           install -m 0755 scripts/deploy.sh "${compose_dir}/scripts/deploy.sh"
-          install -m 0755 scripts/copilot-on.sh "${compose_dir}/scripts/copilot-on.sh"
-          install -m 0755 scripts/copilot-off.sh "${compose_dir}/scripts/copilot-off.sh"
           install -m 0755 scripts/backup-postgres.sh "${compose_dir}/scripts/backup-postgres.sh"
           install -m 0755 scripts/restore-postgres.sh "${compose_dir}/scripts/restore-postgres.sh"
 
@@ -100,14 +98,6 @@ jobs:
           compose_dir="${PROD_COMPOSE_DIR:-/opt/bloodwatch/compose}"
           if [ ! -x "${compose_dir}/scripts/deploy.sh" ]; then
             echo "Deploy script is missing or not executable: ${compose_dir}/scripts/deploy.sh"
-            exit 1
-          fi
-          if [ ! -x "${compose_dir}/scripts/copilot-on.sh" ]; then
-            echo "Copilot ON script is missing or not executable: ${compose_dir}/scripts/copilot-on.sh"
-            exit 1
-          fi
-          if [ ! -x "${compose_dir}/scripts/copilot-off.sh" ]; then
-            echo "Copilot OFF script is missing or not executable: ${compose_dir}/scripts/copilot-off.sh"
             exit 1
           fi
           if [ ! -f "${compose_dir}/.env" ]; then
