@@ -20,9 +20,6 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: bloodwatch-ollama
-    profiles: ["copilot"]
-    ports:
-      - "11434:11434"
     volumes:
       - bloodwatch_ollama_data:/root/.ollama
     mem_limit: ${OLLAMA__MEM_LIMIT:-2g}
@@ -34,7 +31,7 @@ services:
     profiles: ["copilot"]
     environment:
       OLLAMA_HOST: http://ollama:11434
-    command: ["pull", "${OLLAMA__MODEL:-qwen2.5:0.5b}"]
+    command: ["pull", "${OLLAMA__MODEL:-qwen3.5:2b}"]
     depends_on:
       ollama:
         condition: service_started
@@ -69,8 +66,6 @@ services:
       context: .
       dockerfile: src/BloodWatch.Api/Dockerfile
     container_name: bloodwatch-api
-    group_add:
-      - "${HOST_DOCKER_GID:-998}"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__BloodWatch: Host=postgres;Port=5432;Database=bloodwatch;Username=bloodwatch;Password=bloodwatch
@@ -83,16 +78,15 @@ services:
       BloodWatch__JwtAuth__AdminPasswordHash: ${BloodWatch__JwtAuth__AdminPasswordHash:-}
       BloodWatch__Copilot__Enabled: ${BloodWatch__Copilot__Enabled:-false}
       BloodWatch__Copilot__AdminApiKey: ${BloodWatch__Copilot__AdminApiKey:-}
-      BloodWatch__Copilot__Control__Enabled: ${BloodWatch__Copilot__Control__Enabled:-true}
       OLLAMA__BASE_URL: ${OLLAMA__BASE_URL:-http://ollama:11434}
-      OLLAMA__MODEL: ${OLLAMA__MODEL:-qwen2.5:0.5b}
+      OLLAMA__MODEL: ${OLLAMA__MODEL:-qwen3.5:2b}
       OLLAMA__TIMEOUT_SECONDS: ${OLLAMA__TIMEOUT_SECONDS:-30}
       OLLAMA__MAX_RETRIES: ${OLLAMA__MAX_RETRIES:-2}
+      OLLAMA__KEEP_ALIVE: ${OLLAMA__KEEP_ALIVE:-2m}
+      OLLAMA__NUM_CTX: ${OLLAMA__NUM_CTX:-4096}
       BloodWatch__Build__Version: ${BloodWatch__Build__Version:-dev}
       BloodWatch__Build__Commit: ${BloodWatch__Build__Commit:-local}
       BloodWatch__Build__Date: ${BloodWatch__Build__Date:-1970-01-01T00:00:00Z}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
     depends_on:

@@ -81,12 +81,6 @@ type CopilotBriefingResponse = {
   answer: CopilotAnswer;
 };
 
-type CopilotFeatureFlagResponse = {
-  enabled: boolean;
-  configuredEnabled: boolean;
-  updatedAtUtc: string;
-};
-
 type AuthSession = {
   email: string;
   accessToken: string;
@@ -797,11 +791,9 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
   const [question, setQuestion] = useState("What is critical now and where?");
   const [busyAsk, setBusyAsk] = useState(false);
   const [busyBriefing, setBusyBriefing] = useState<null | "daily" | "weekly">(null);
-  const [busyFeatureFlagAction, setBusyFeatureFlagAction] = useState<null | "status" | "toggle">(null);
   const [message, setMessage] = useState<string | null>(null);
   const [answer, setAnswer] = useState<CopilotAnswer | null>(null);
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
-  const [featureFlagStatus, setFeatureFlagStatus] = useState<CopilotFeatureFlagResponse | null>(null);
 
   useEffect(() => {
     void loadSources();
@@ -823,12 +815,10 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
     }
   }
 
-  function getAdminHeader(showRequiredMessage = true): HeadersInit | null {
+  function getAdminHeader(): HeadersInit | null {
     const normalized = adminApiKey.trim();
     if (normalized.length === 0) {
-      if (showRequiredMessage) {
-        setMessage("Admin API key is required.");
-      }
+      setMessage("Admin API key is required.");
       return null;
     }
 
@@ -896,59 +886,6 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
     }
   }
 
-  async function loadFeatureFlagStatus(showRequiredMessage = false) {
-    const adminHeader = getAdminHeader(showRequiredMessage);
-    if (!adminHeader) {
-      return;
-    }
-
-    setBusyFeatureFlagAction("status");
-    setMessage(null);
-    try {
-      const payload = await requestJson<CopilotFeatureFlagResponse>("/api/v1/copilot/status", {
-        headers: adminHeader
-      });
-      setFeatureFlagStatus(payload);
-    } catch (error) {
-      setMessage(readError(error));
-    } finally {
-      setBusyFeatureFlagAction(null);
-    }
-  }
-
-  async function setFeatureFlag(enabled: boolean) {
-    const adminHeader = getAdminHeader();
-    if (!adminHeader) {
-      return;
-    }
-
-    setBusyFeatureFlagAction("toggle");
-    setMessage(null);
-    try {
-      const payload = await requestJson<CopilotFeatureFlagResponse>("/api/v1/copilot/feature-flag", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...adminHeader
-        },
-        body: JSON.stringify({ enabled })
-      });
-      setFeatureFlagStatus(payload);
-      setMessage(enabled ? "Copilot infrastructure enabled." : "Copilot infrastructure disabled.");
-    } catch (error) {
-      setMessage(readError(error));
-    } finally {
-      setBusyFeatureFlagAction(null);
-    }
-  }
-
-  const infraStatusLabel = featureFlagStatus
-    ? featureFlagStatus.enabled
-      ? "Copilot infrastructure enabled."
-      : "Copilot infrastructure disabled."
-    : "Copilot infrastructure status unknown.";
-  const infraStatusTone = featureFlagStatus ? (featureFlagStatus.enabled ? "enabled" : "disabled") : "unknown";
-
   return (
     <div className="page">
       <header className="hero">
@@ -972,56 +909,6 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
 
       <main className="grid">
         <section className="panel">
-          <section className="copilot-control-card copilot-control-card-panel">
-            <p className="kicker">Copilot Infra</p>
-            <div className="copilot-control-header">
-              <span
-                className={`copilot-status-pill ${
-                  featureFlagStatus ? (featureFlagStatus.enabled ? "enabled" : "disabled") : "unknown"
-                }`}
-              >
-                {featureFlagStatus ? (featureFlagStatus.enabled ? "Enabled" : "Disabled") : "Unknown"}
-              </span>
-              <button
-                type="button"
-                onClick={() => void loadFeatureFlagStatus(true)}
-                disabled={busyFeatureFlagAction !== null || busyAsk || busyBriefing !== null}
-              >
-                {busyFeatureFlagAction === "status" ? "Checking..." : "Refresh"}
-              </button>
-            </div>
-            <label className="copilot-control-key">
-              <span>Admin API key</span>
-              <input
-                type="password"
-                value={adminApiKey}
-                onChange={(event) => setAdminApiKey(event.target.value)}
-                onBlur={() => {
-                  if (adminApiKey.trim().length > 0) {
-                    void loadFeatureFlagStatus();
-                  }
-                }}
-                placeholder="X-Admin-Api-Key"
-                autoComplete="off"
-                required
-              />
-            </label>
-            <label className="copilot-toggle-row">
-              <span>{busyFeatureFlagAction === "toggle" ? "Applying..." : "Enable / Disable"}</span>
-              <span className="copilot-toggle">
-                <input
-                  type="checkbox"
-                  checked={featureFlagStatus?.enabled ?? false}
-                  disabled={busyFeatureFlagAction !== null || busyAsk || busyBriefing !== null}
-                  onChange={(event) => {
-                    void setFeatureFlag(event.target.checked);
-                  }}
-                />
-                <span className="copilot-toggle-slider" />
-              </span>
-            </label>
-          </section>
-          <p className={`copilot-infra-status ${infraStatusTone}`}>{infraStatusLabel}</p>
           <h2>Ask Copilot</h2>
           <form
             className="stack"
@@ -1030,6 +917,18 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
               void askCopilot();
             }}
           >
+            <label>
+              Admin API key
+              <input
+                type="password"
+                value={adminApiKey}
+                onChange={(event) => setAdminApiKey(event.target.value)}
+                placeholder="X-Admin-Api-Key"
+                autoComplete="off"
+                required
+              />
+            </label>
+
             <label>
               Source
               <select value={selectedSource} onChange={(event) => setSelectedSource(event.target.value)}>
@@ -1052,20 +951,20 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
             </label>
 
             <div className="actions">
-              <button type="submit" disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}>
+              <button type="submit" disabled={busyAsk || busyBriefing !== null}>
                 {busyAsk ? "Asking..." : "Ask"}
               </button>
               <button
                 type="button"
                 onClick={() => void loadBriefing("daily")}
-                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
+                disabled={busyAsk || busyBriefing !== null}
               >
                 {busyBriefing === "daily" ? "Loading..." : "Daily Briefing"}
               </button>
               <button
                 type="button"
                 onClick={() => void loadBriefing("weekly")}
-                disabled={busyAsk || busyBriefing !== null || busyFeatureFlagAction !== null}
+                disabled={busyAsk || busyBriefing !== null}
               >
                 {busyBriefing === "weekly" ? "Loading..." : "Weekly Briefing"}
               </button>
@@ -1073,8 +972,7 @@ function CopilotPage({ onLogout, onAuthExpired }: CopilotPageProps) {
           </form>
 
           <p className="hint">
-            Use the infra toggle above to hard-toggle Ollama (real memory savings) during controlled windows on low-memory
-            hosts.
+            Copilot uses the internal Ollama runtime and returns evidence-backed summaries with citations.
           </p>
           {message ? <p className="error">{message}</p> : null}
         </section>

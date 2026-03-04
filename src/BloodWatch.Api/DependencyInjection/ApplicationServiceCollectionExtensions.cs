@@ -65,6 +65,18 @@ public static class ApplicationServiceCollectionExtensions
                     options.MaxRetries,
                     min: 0,
                     max: 5);
+
+                options.KeepAlive = ResolveString(
+                    config[$"{OllamaOptions.SectionName}:KeepAlive"],
+                    "OLLAMA__KEEP_ALIVE",
+                    options.KeepAlive);
+
+                options.NumCtx = ResolveInt(
+                    config[$"{OllamaOptions.SectionName}:NumCtx"],
+                    "OLLAMA__NUM_CTX",
+                    options.NumCtx,
+                    min: 256,
+                    max: 32768);
             });
 
         services.AddOptions<ProductionRuntimeOptions>()
@@ -91,7 +103,6 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IReserveAnalyticsQueryService, ReserveAnalyticsQueryService>();
         services.AddScoped<ICopilotService, CopilotService>();
         services.AddScoped<CopilotAnalyticsTools>();
-        services.AddSingleton<ICopilotInfrastructureController, DockerCopilotInfrastructureController>();
         services.AddSingleton<CopilotGuardrailEvaluator>();
         services.AddSingleton<CopilotIntentRouter>();
         services.AddHttpClient<ILLMClient, OllamaLLMClient>();

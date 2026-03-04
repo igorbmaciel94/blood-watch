@@ -231,48 +231,6 @@ body {
   background: rgba(255, 255, 255, 0.95);
 }
 
-.copilot-control-card-panel {
-  width: 100%;
-  background: linear-gradient(145deg, #fff2f5 0%, #ffe4ea 100%);
-  border-color: #f1c1ca;
-}
-
-.copilot-control-card-panel .kicker {
-  color: #8f1a2f;
-}
-
-.copilot-control-card-panel .copilot-control-key,
-.copilot-control-card-panel .copilot-toggle-row {
-  color: #6c2733;
-}
-
-.copilot-control-card-panel .copilot-toggle-slider {
-  background: rgba(225, 181, 191, 0.45);
-  border-color: rgba(162, 76, 96, 0.25);
-}
-
-.copilot-control-card-panel .copilot-toggle input:checked + .copilot-toggle-slider {
-  background: rgba(116, 229, 162, 0.75);
-}
-
-.copilot-infra-status {
-  margin: 8px 0 14px;
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-
-.copilot-infra-status.enabled {
-  color: #12653a;
-}
-
-.copilot-infra-status.disabled {
-  color: #8d2131;
-}
-
-.copilot-infra-status.unknown {
-  color: #6b4750;
-}
-
 .copilot-status-pill {
   display: inline-flex;
   align-items: center;

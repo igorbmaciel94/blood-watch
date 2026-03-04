@@ -31,6 +31,8 @@ public sealed class OllamaLLMClient(
         var config = _optionsMonitor.CurrentValue;
         var baseUrl = Normalize(config.BaseUrl);
         var model = Normalize(config.Model);
+        var keepAlive = Normalize(config.KeepAlive);
+        var numCtx = Math.Clamp(config.NumCtx, 256, 32768);
 
         if (baseUrl is null || model is null)
         {
@@ -58,9 +60,11 @@ public sealed class OllamaLLMClient(
                         Prompt: prompt,
                         Stream: false,
                         System: Normalize(options.SystemPrompt),
+                        KeepAlive: keepAlive,
                         Options: new OllamaRequestOptions(
                             Temperature: options.Temperature,
-                            NumPredict: options.MaxTokens))),
+                            NumPredict: options.MaxTokens,
+                            NumCtx: numCtx))),
                 };
 
                 using var response = await _httpClient.SendAsync(
@@ -199,9 +203,11 @@ public sealed class OllamaLLMClient(
         [property: JsonPropertyName("prompt")] string Prompt,
         [property: JsonPropertyName("stream")] bool Stream,
         [property: JsonPropertyName("system")] string? System,
+        [property: JsonPropertyName("keep_alive")] string? KeepAlive,
         [property: JsonPropertyName("options")] OllamaRequestOptions? Options);
 
     private sealed record OllamaRequestOptions(
         [property: JsonPropertyName("temperature")] double? Temperature,
-        [property: JsonPropertyName("num_predict")] int? NumPredict);
+        [property: JsonPropertyName("num_predict")] int? NumPredict,
+        [property: JsonPropertyName("num_ctx")] int? NumCtx);
 }

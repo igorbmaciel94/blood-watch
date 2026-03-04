@@ -54,8 +54,8 @@ Required sensitive values include:
 ## Copilot Guardrails
 
 - Copilot endpoints are read-only and admin-key protected.
-- Copilot hard-toggle (`/api/v1/copilot/feature-flag`) starts/stops Ollama container through Docker socket access.
-- Docker socket access is privileged; keep `X-Admin-Api-Key` high-entropy, private, and rotated.
+- API does not mount Docker socket and does not expose infrastructure-toggle endpoints.
+- Keep `X-Admin-Api-Key` high-entropy, private, and rotated.
 - Copilot rejects requests for secrets/credentials and write actions.
 - Copilot rejects prompt-injection attempts (`ignore rules`, `developer mode`, `decode and obey` patterns).
 - Copilot rejects harmful instruction requests and sexual content involving minors.

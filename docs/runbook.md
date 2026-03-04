@@ -39,19 +39,7 @@ dotnet run --project src/BloodWatch.Api -- hash-password "<strong-password>"
 docker compose up -d --build
 ```
 
-3) Start Copilot on-demand (optional):
-
-```bash
-COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-on.sh
-```
-
-4) Disable Copilot and release memory:
-
-```bash
-COMPOSE_FILE=./docker-compose.yml ENV_FILE=./.env ./scripts/copilot-off.sh
-```
-
-5) Inspect services:
+3) Inspect services:
 
 ```bash
 docker compose ps
@@ -59,7 +47,7 @@ docker compose logs -f api
 docker compose logs -f worker
 ```
 
-6) Health checks:
+4) Health checks:
 
 - API live: `http://localhost:8080/health/live`
 - API ready: `http://localhost:8080/health/ready`
@@ -85,9 +73,6 @@ sudo chown -R "$USER":"$USER" /opt/bloodwatch
 - `deploy/Caddyfile` -> `/opt/bloodwatch/compose/Caddyfile`
 - `.env.example` -> `/opt/bloodwatch/compose/.env` (then fill real values)
 - `scripts/*.sh` -> `/opt/bloodwatch/compose/scripts/` (make executable)
-- recommended operational shortcuts:
-  - `/opt/bloodwatch/compose/scripts/copilot-on.sh`
-  - `/opt/bloodwatch/compose/scripts/copilot-off.sh`
 
 4) Configure DNS:
 - Create `A` record from your production domain to VPS public IP.
@@ -112,6 +97,8 @@ At minimum set:
 - `BloodWatch__Copilot__AdminApiKey` (required when Copilot is enabled)
 - `OLLAMA__BASE_URL`
 - `OLLAMA__MODEL`
+- `OLLAMA__KEEP_ALIVE` (recommended default: `2m`)
+- `OLLAMA__NUM_CTX` (recommended default: `4096`)
 - `OLLAMA__MEM_LIMIT` (recommended on constrained hosts, example `2g`)
 - `CADDY_EMAIL`
 - `BLOODWATCH__TELEGRAM_BOT_TOKEN` (if Telegram delivery is enabled)
@@ -120,6 +107,7 @@ Never commit this `.env` file.
 
 Recommended default on shared 4GB hosts:
 - `BloodWatch__Copilot__Enabled=false`
+- `OLLAMA__MODEL=qwen3.5:2b`
 
 Caddy host routing is fixed in [deploy/Caddyfile](../deploy/Caddyfile):
 - `bloodwatch.lighthousedev.uk` -> API
@@ -151,31 +139,13 @@ Automatic path (default):
 Manual fallback path:
 - run `/opt/bloodwatch/compose/scripts/deploy.sh vX.Y.Z` on the server.
 - `deploy.sh` now pins `BLOODWATCH_IMAGE_TAG=vX.Y.Z` into `/opt/bloodwatch/compose/.env` to avoid accidental fallback to `latest`.
-- `deploy.sh` now also detects `/var/run/docker.sock` group and writes `HOST_DOCKER_GID` into `/opt/bloodwatch/compose/.env` so API can control Ollama without running as root.
-
-On-demand Copilot control in production (preferred via API/UI hard toggle):
-
-```bash
-curl -sS -X GET "https://bloodwatch.lighthousedev.uk/api/v1/copilot/status" \
-  -H "X-Admin-Api-Key: <admin-key>"
-
-curl -sS -X POST "https://bloodwatch.lighthousedev.uk/api/v1/copilot/feature-flag" \
-  -H "X-Admin-Api-Key: <admin-key>" \
-  -H "Content-Type: application/json" \
-  -d '{"enabled":true}'
-```
-
-Manual fallback (server shell scripts):
-
-```bash
-COMPOSE_FILE=/opt/bloodwatch/compose/docker-compose.prod.yml ENV_FILE=/opt/bloodwatch/compose/.env /opt/bloodwatch/compose/scripts/copilot-on.sh
-COMPOSE_FILE=/opt/bloodwatch/compose/docker-compose.prod.yml ENV_FILE=/opt/bloodwatch/compose/.env /opt/bloodwatch/compose/scripts/copilot-off.sh
-```
 
 What it does:
-- pull API + Worker images
+- pull API + Worker + Ollama images
+- start/update `postgres` and `ollama`
+- run one-shot `ollama-model-init` to ensure configured model exists
 - run one-shot migrator
-- start/update `api`, `worker`, `caddy`
+- start/update `api`, `worker`, `caddy`, `ollama`
 - verify API/Worker readiness
 
 ## Update and Rollback
@@ -249,7 +219,7 @@ This ensures merges are blocked when required pipelines fail.
 - Copilot endpoints `503`:
   - Copilot disabled or missing `BloodWatch__Copilot__AdminApiKey`
   - Ollama unavailable or missing `OLLAMA__*` configuration
-  - on 4GB hosts, use `qwen2.5:0.5b` and run `ollama` only on-demand (`--profile copilot`)
+  - on 4GB hosts, use `qwen3.5:2b` and tune `OLLAMA__KEEP_ALIVE` / `OLLAMA__NUM_CTX`
 - Worker dispatch failures:
   - inspect `docker compose logs worker`
   - verify notifier secrets and webhook/chat targets
