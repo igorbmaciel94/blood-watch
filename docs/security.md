@@ -37,7 +37,6 @@ Required sensitive values include:
   - gitleaks
   - vulnerable package checks
   - CodeQL
-  - Dependency Review for new high/critical vulnerable dependency introductions in PRs
   - Trivy repository and IaC scans with SARIF upload to GitHub code scanning
   - Weekly ZAP baseline against the published app URL with issue tracking for passive DAST findings
 
