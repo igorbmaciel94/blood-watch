@@ -19,7 +19,7 @@ jobs:
         uses: zaproxy/action-baseline@v0.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          target: "https://bloodwatch.lighthousedev.uk/app/login"
+          target: "https://bloodwatch.lighthousedev.uk/"
           cmd_options: "-a -j -m 2"
           allow_issue_writing: true
           fail_action: false

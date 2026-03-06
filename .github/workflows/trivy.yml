@@ -22,26 +22,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
-        with:
-          version: v0.68.2
-          cache: true
-
       - name: Scan repository dependencies
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln
-          format: sarif
-          output: trivy-fs.sarif
-          severity: HIGH,CRITICAL
-          limit-severities-for-sarif: true
-          ignore-unfixed: true
-          hide-progress: true
-          exit-code: 1
-          skip-setup-trivy: true
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            aquasec/trivy:0.68.2 \
+            fs /workspace \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output /workspace/trivy-fs.sarif \
+            --ignore-unfixed \
+            --no-progress \
+            --exit-code 1
 
       - name: Upload filesystem SARIF
         if: always() && hashFiles('trivy-fs.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -57,24 +51,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
-        with:
-          version: v0.68.2
-          cache: true
-
       - name: Scan IaC and container configuration
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          scan-type: config
-          scan-ref: .
-          format: sarif
-          output: trivy-config.sarif
-          severity: HIGH,CRITICAL
-          limit-severities-for-sarif: true
-          hide-progress: true
-          exit-code: 1
-          skip-setup-trivy: true
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            aquasec/trivy:0.68.2 \
+            config /workspace \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output /workspace/trivy-config.sarif \
+            --no-progress \
+            --exit-code 1
 
       - name: Upload configuration SARIF
         if: always() && hashFiles('trivy-config.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
