@@ -1,0 +1,27 @@
+name: zap-baseline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 3"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Run ZAP baseline against production app
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: "https://bloodwatch.lighthousedev.uk/"
+          cmd_options: "-a -j -m 2"
+          allow_issue_writing: true
+          fail_action: false
+          issue_title: "ZAP Baseline: bloodwatch.lighthousedev.uk"
+          artifact_name: zap-baseline-production
