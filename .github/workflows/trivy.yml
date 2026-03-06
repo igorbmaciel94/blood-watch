@@ -26,7 +26,7 @@ jobs:
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" \
-            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
             aquasec/trivy:0.68.2 \
             fs /workspace \
             --scanners vuln \
@@ -34,7 +34,7 @@ jobs:
             --format sarif \
             --output /workspace/trivy-fs.sarif \
             --ignore-unfixed \
-            --no-progress \
+            --quiet \
             --exit-code 1
 
       - name: Upload filesystem SARIF
@@ -55,13 +55,13 @@ jobs:
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace" \
-            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
             aquasec/trivy:0.68.2 \
             config /workspace \
             --severity HIGH,CRITICAL \
             --format sarif \
             --output /workspace/trivy-config.sarif \
-            --no-progress \
+            --quiet \
             --exit-code 1
 
       - name: Upload configuration SARIF
