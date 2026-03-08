@@ -51,7 +51,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.release.published_at }}
 
       - name: Build and push ${{ matrix.service }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
