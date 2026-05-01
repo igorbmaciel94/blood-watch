@@ -144,6 +144,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/bloodwatch/data/caddy/data:/data
       - /opt/bloodwatch/data/caddy/config:/config
+      - /opt/static:/srv/static:ro
     depends_on:
       api:
         condition: service_healthy

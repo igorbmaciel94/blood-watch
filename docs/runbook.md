@@ -15,6 +15,8 @@ Use this filesystem layout on the VPS:
 - `/opt/bloodwatch/compose/`
 - `/opt/bloodwatch/data/postgres/`
 - `/opt/bloodwatch/backups/`
+- `/opt/static/habitvs/privacy/`
+- `/opt/static/habitvs/support/`
 
 Recommended contents of `/opt/bloodwatch/compose/`:
 - `docker-compose.prod.yml`
@@ -64,7 +66,10 @@ docker compose logs -f worker
 sudo mkdir -p /opt/bloodwatch/compose
 sudo mkdir -p /opt/bloodwatch/data/postgres
 sudo mkdir -p /opt/bloodwatch/backups
+sudo mkdir -p /opt/static/habitvs/privacy
+sudo mkdir -p /opt/static/habitvs/support
 sudo chown -R "$USER":"$USER" /opt/bloodwatch
+sudo chown -R "$USER":"$USER" /opt/static
 ```
 
 3) Copy deploy assets from repo:
@@ -111,7 +116,11 @@ Recommended default on shared 4GB hosts:
 
 Caddy host routing is fixed in [deploy/Caddyfile](../deploy/Caddyfile):
 - `bloodwatch.lighthousedev.uk` -> API
-- `lighthousedev.uk` and `www.lighthousedev.uk` -> redirect to `bloodwatch.lighthousedev.uk`
+- `lighthousedev.uk/habitvs/privacy` and `www.lighthousedev.uk/habitvs/privacy` -> `/opt/static/habitvs/privacy/index.html`
+- `lighthousedev.uk/habitvs/support` and `www.lighthousedev.uk/habitvs/support` -> `/opt/static/habitvs/support/index.html`
+- `lighthousedev.uk` and `www.lighthousedev.uk` -> redirect to `bloodwatch.lighthousedev.uk` for all other paths
+
+Habitvs public page HTML files are served by the Caddy container through the `/opt/static:/srv/static:ro` mount in [deploy/docker-compose.prod.yml](../deploy/docker-compose.prod.yml).
 
 ## Release -> Deploy Flow
 
