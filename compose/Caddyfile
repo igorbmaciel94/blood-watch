@@ -22,7 +22,25 @@ cost.lighthousedev.uk {
 }
 
 lighthousedev.uk, www.lighthousedev.uk {
-	redir https://bloodwatch.lighthousedev.uk{uri} permanent
+	encode zstd gzip
+
+	@habitvsPrivacy path /habitvs/privacy /habitvs/privacy/
+	handle @habitvsPrivacy {
+		root * /srv/static
+		rewrite * /habitvs/privacy/index.html
+		file_server
+	}
+
+	@habitvsSupport path /habitvs/support /habitvs/support/
+	handle @habitvsSupport {
+		root * /srv/static
+		rewrite * /habitvs/support/index.html
+		file_server
+	}
+
+	handle {
+		redir https://bloodwatch.lighthousedev.uk{uri} permanent
+	}
 
 	log {
 		output stdout
