@@ -36,9 +36,9 @@ Required sensitive values include:
 - Security workflows include:
   - gitleaks
   - vulnerable package checks
-  - CodeQL
-  - Trivy repository and IaC scans with SARIF upload to GitHub code scanning
-  - Weekly ZAP baseline against the published app URL with issue tracking for passive DAST findings
+  - CodeQL on pull requests, pushes to `main`, and manual dispatch
+  - Trivy repository and IaC scans on pull requests, pushes to `main`, and manual dispatch, with SARIF upload to GitHub code scanning
+  - ZAP baseline after successful production deployments and by manual dispatch, with issue tracking for passive DAST findings
 
 ## Logging and Redaction
 

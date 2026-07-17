@@ -1,9 +1,8 @@
 name: zap-baseline
 
 on:
+  workflow_call:
   workflow_dispatch:
-  schedule:
-    - cron: "0 5 * * 3"
 
 permissions:
   contents: read

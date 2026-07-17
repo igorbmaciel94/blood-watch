@@ -119,3 +119,12 @@ jobs:
           export BloodWatch__Build__Date="${RELEASE_DATE}"
 
           "${compose_dir}/scripts/deploy.sh" "${RELEASE_TAG}"
+
+  zap-production:
+    if: github.event.release.prerelease == false
+    needs:
+      - deploy-production
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/zap-baseline.yml
